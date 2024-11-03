@@ -14,15 +14,15 @@ import (
 func genLoadDescription(t prometheus.ValueType, fqName string, help string, variableLabels []string, constLabels prometheus.Labels) [3]metric {
 	return [3]metric{
 		{
-			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load1", fqName), help, nil, nil),
+			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load1", fqName), help, variableLabels, constLabels),
 			valueType: t,
 		},
 		{
-			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load5", fqName), help, nil, nil),
+			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load5", fqName), help, variableLabels, constLabels),
 			valueType: t,
 		},
 		{
-			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load15", fqName), help, nil, nil),
+			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load15", fqName), help, variableLabels, constLabels),
 			valueType: t,
 		},
 	}

@@ -16,8 +16,13 @@ func connectHandler(client mqtt.Client) {
 }
 
 var (
-	broker            = kingpin.Flag("broker", "Broker connection string.").Short('b').Default("tcp://127.0.0.1:1883").String()
-	clientID          = kingpin.Flag("client-id", "Client ID to use when connected to the broker.").Default("mosquitto-exporter").String()
+	webListenAddress = kingpin.Flag("web.listen-address", "Address on which the web server will listen.").Default(":9344").String()
+	webTelemetryPath = kingpin.Flag("web.telemetry-path", "Path on which metrics will be served.").Default("/metrics").String()
+
+	broker            = kingpin.Flag("mqtt.broker", "Broker connection string.").Short('b').Default("tcp://127.0.0.1:1883").Envar("MQTT_BROKER").String()
+	clientID          = kingpin.Flag("mqtt.client-id", "Client ID to use when connected to the broker.").Default("mosquitto-exporter").Envar("MQTT_CLIENT_ID").String()
+	username          = kingpin.Flag("mqtt.username", "Broker username").Short('u').Envar("MQTT_USERNAME").String()
+	password          = kingpin.Flag("mqtt.password", "Broker password").Short('p').Envar("MQTT_PASSWORD").String()
 	clientsCollector  = kingpin.Flag("collector.clients", "Enable the clients collector.").Bool()
 	messagesCollector = kingpin.Flag("collector.messages", "Enable the messages collector.").Bool()
 	loadCollector     = kingpin.Flag("collector.load", "Enable the load collector.").Bool()
@@ -32,6 +37,13 @@ func main() {
 	constLabels["broker"] = *broker
 	mqttOptions.SetClientID(*clientID)
 	mqttOptions.SetOnConnectHandler(connectHandler)
+	if username != nil {
+		mqttOptions.SetUsername(*username)
+	}
+	if password != nil {
+		mqttOptions.SetPassword(*password)
+	}
+
 	client := mqtt.NewClient(mqttOptions)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
@@ -58,6 +70,6 @@ func main() {
 	defaultCollector := internal.NewDefaultCollector(constLabels)
 	defaultCollector.Subscribe(client)
 	prometheus.MustRegister(defaultCollector)
-	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(":2112", nil)
+	http.Handle(*webTelemetryPath, promhttp.Handler())
+	http.ListenAndServe(*webListenAddress, nil)
 }
