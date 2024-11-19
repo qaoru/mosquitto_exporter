@@ -85,7 +85,7 @@ func (collector *MessagesCollector) storedMessagesHandler(client mqtt.Client, me
 	topic := strings.Split(message.Topic(), "/")
 	last := topic[len(topic)-1]
 	num, _ := strconv.Atoi(string(message.Payload()))
-	key := fmt.Sprintf("stored_%s", last)
+	key := "stored_" + last
 	collector.mu.Lock()
 	collector.Metrics[key] = float64(num)
 	collector.mu.Unlock()

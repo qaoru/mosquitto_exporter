@@ -14,15 +14,15 @@ import (
 func genLoadDescription(t prometheus.ValueType, fqName string, help string, variableLabels []string, constLabels prometheus.Labels) [3]metric {
 	return [3]metric{
 		{
-			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load1", fqName), help, variableLabels, constLabels),
+			desc:      prometheus.NewDesc(fqName+"_load1", help, variableLabels, constLabels),
 			valueType: t,
 		},
 		{
-			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load5", fqName), help, variableLabels, constLabels),
+			desc:      prometheus.NewDesc(fqName+"_load5", help, variableLabels, constLabels),
 			valueType: t,
 		},
 		{
-			desc:      prometheus.NewDesc(fmt.Sprintf("%s_load15", fqName), help, variableLabels, constLabels),
+			desc:      prometheus.NewDesc(fqName+"_load15", help, variableLabels, constLabels),
 			valueType: t,
 		},
 	}
@@ -63,9 +63,9 @@ func (collector *LoadCollector) Describe(ch chan<- *prometheus.Desc) {
 func (collector *LoadCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for k, v := range collector.descriptions {
-		k1 := fmt.Sprintf("%s_1min", k)
-		k2 := fmt.Sprintf("%s_5min", k)
-		k3 := fmt.Sprintf("%s_15min", k)
+		k1 := k + "_1min"
+		k2 := k + "_5min"
+		k3 := k + "_15min"
 		collector.mu.RLock()
 		ch <- prometheus.MustNewConstMetric(v[0].desc, v[0].valueType, collector.Metrics[k1])
 		ch <- prometheus.MustNewConstMetric(v[1].desc, v[1].valueType, collector.Metrics[k2])
@@ -86,9 +86,9 @@ func (collector *LoadCollector) loadHandler(client mqtt.Client, message mqtt.Mes
 	var key string
 	switch len(topic) {
 	case 5:
-		key = fmt.Sprintf("%s_%s", topic[3], topic[4])
+		key = topic[3] + "_" + topic[4]
 	case 6:
-		key = fmt.Sprintf("%s_%s_%s", topic[3], topic[4], topic[5])
+		key = topic[3] + "_" + topic[4] + "_" + topic[5]
 	}
 	num, _ := strconv.ParseFloat(string(message.Payload()), 64)
 	collector.mu.Lock()
