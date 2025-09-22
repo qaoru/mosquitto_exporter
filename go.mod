@@ -1,10 +1,10 @@
 module github.com/qaoru/mosquitto_exporter
 
-go 1.23.2
+go 1.24.0
 
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
-	github.com/eclipse/paho.mqtt.golang v1.5.0
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/prometheus/client_golang v1.23.0
 )
 
@@ -18,8 +18,8 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.65.0 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
-	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/net v0.44.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 )
