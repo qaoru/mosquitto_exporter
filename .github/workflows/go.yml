@@ -37,6 +37,7 @@ jobs:
         file: coverage.out
         flags: unittests
         name: codecov-umbrella
+        token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: false
 
     - name: Check for common issues
@@ -49,6 +50,12 @@ jobs:
     name: Integration Tests
     needs: test
     runs-on: ubuntu-latest
+    services:
+      mosquitto:
+        image: eclipse-mosquitto:2.0.15
+        ports:
+          - 1883:1883
+        options: --health-cmd "mosquitto_sub -t '$SYS/broker/version' -C 1" --health-interval 5s --health-timeout 3s --health-retries 5
     steps:
     - uses: actions/checkout@v4
 
@@ -60,35 +67,22 @@ jobs:
     - name: Install dependencies
       run: go mod tidy
 
-    - name: Install Docker
+    - name: Wait for Mosquitto to be ready
       run: |
-        sudo apt-get update
-        sudo apt-get install -y docker.io
-        sudo systemctl start docker
-        sudo systemctl enable docker
-
-    - name: Run Docker-based integration tests
-      run: |
-        echo "Running Docker-based integration tests..."
-        go test -v -tags=integration -run TestIntegrationWithMosquitto -timeout 300s
-
-    - name: Run basic integration verification
-      run: |
-        echo "Running basic integration verification..."
-        # Start Mosquitto in Docker
-        docker run -d -p 1883:1883 --name test-mosquitto eclipse-mosquitto:2.0.15
-        
-        # Wait for it to be ready
         echo "Waiting for Mosquitto to be ready..."
         for i in {1..30}; do
-          if docker exec test-mosquitto mosquitto_sub -t '$SYS/broker/version' -C 1 >/dev/null 2>&1; then
+          if nc -z localhost 1883; then
             echo "Mosquitto is ready!"
             break
           fi
           sleep 1
           echo "Waiting... ($i/30)"
         done
-        
+        nc -z localhost 1883 || exit 1
+
+    - name: Test exporter with real Mosquitto
+      run: |
+        echo "Testing exporter with real Mosquitto broker..."
         # Start the exporter in the background
         go run . --mqtt.broker=tcp://localhost:1883 --collector.clients --collector.messages --collector.load &
         EXPORTER_PID=$!
@@ -97,12 +91,28 @@ jobs:
         sleep 5
         
         # Test that metrics are being served
-        curl -s http://localhost:9344/metrics | grep "mosquitto_" && echo "Metrics found!" || exit 1
+        METRICS=$(curl -s http://localhost:9344/metrics)
+        echo "Metrics received:"
+        echo "$METRICS" | head -20
+        
+        # Verify we get Mosquitto metrics
+        if echo "$METRICS" | grep -q "mosquitto_"; then
+            echo "✓ Mosquitto metrics found!"
+        else
+            echo "✗ Mosquitto metrics not found"
+            exit 1
+        fi
+        
+        # Verify we get specific metrics
+        if echo "$METRICS" | grep -q "mosquitto_uptime"; then
+            echo "✓ Uptime metrics found!"
+        else
+            echo "✗ Uptime metrics not found"
+            exit 1
+        fi
         
         # Clean up
         kill $EXPORTER_PID || true
-        docker stop test-mosquitto
-        docker rm test-mosquitto
         
         echo "Integration tests passed!"
 

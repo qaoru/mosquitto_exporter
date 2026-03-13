@@ -33,12 +33,9 @@ go test ./... -cover
 
 # Run tests with verbose output
 go test -v ./...
-
-# Run integration tests (requires Docker and Mosquitto)
-go test -tags=integration -v ./...
 ```
 
-**Note:** Integration tests require Docker to be installed and running. They will be skipped by default.
+**Note:** Integration tests are automatically run in CI using GitHub Actions service containers. They test against a real Mosquitto broker in a containerized environment.
 
 ### Building
 
@@ -58,17 +55,18 @@ Current coverage: 15.8% (core business logic)
 
 ### Integration Testing
 
-The CI pipeline includes integration tests that run against a real Mosquitto broker using Docker:
+The CI pipeline includes integration tests that run against a real Mosquitto broker using GitHub Actions service containers:
 
 1. **Unit Tests**: Fast tests that don't require external dependencies
-2. **Integration Tests**: Tests that run against a real Mosquitto broker in Docker
+2. **Integration Tests**: Tests that run against a real Mosquitto broker using GitHub Actions service containers
 3. **Build Verification**: Ensures the project builds correctly with race detection
 
 The integration tests verify:
-- Connection to Mosquitto broker
-- Metric collection and exposure
+- Connection to Mosquitto broker (using service containers)
+- Metric collection and exposure from real `$SYS` topics
 - Proper handling of MQTT messages
 - HTTP metrics endpoint functionality
+- End-to-end exporter workflow
 
 ### Contributing
 
