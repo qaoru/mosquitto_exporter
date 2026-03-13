@@ -25,7 +25,7 @@ docker run -d -p 9344:9344 ghcr.io/qaoru/mosquitto_exporter \
 ### Running tests
 
 ```sh
-# Run all tests
+# Run all unit tests
 go test ./...
 
 # Run tests with coverage
@@ -33,7 +33,12 @@ go test ./... -cover
 
 # Run tests with verbose output
 go test -v ./...
+
+# Run integration tests (requires Docker and Mosquitto)
+go test -tags=integration -v ./...
 ```
+
+**Note:** Integration tests require Docker to be installed and running. They will be skipped by default.
 
 ### Building
 
@@ -50,6 +55,20 @@ go build -race
 The project uses Codecov for test coverage tracking. Tests are automatically run on every push and pull request.
 
 Current coverage: 15.8% (core business logic)
+
+### Integration Testing
+
+The CI pipeline includes integration tests that run against a real Mosquitto broker using Docker:
+
+1. **Unit Tests**: Fast tests that don't require external dependencies
+2. **Integration Tests**: Tests that run against a real Mosquitto broker in Docker
+3. **Build Verification**: Ensures the project builds correctly with race detection
+
+The integration tests verify:
+- Connection to Mosquitto broker
+- Metric collection and exposure
+- Proper handling of MQTT messages
+- HTTP metrics endpoint functionality
 
 ### Contributing
 
