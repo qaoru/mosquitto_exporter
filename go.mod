@@ -1,6 +1,6 @@
 module github.com/qaoru/mosquitto_exporter
 
-go 1.23.2
+go 1.26
 
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
