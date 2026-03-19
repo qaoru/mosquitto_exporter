@@ -91,6 +91,7 @@ jobs:
         sleep 15
         
         # Test that Mosquitto is actually accepting connections
+        set -x
         echo "Testing Mosquitto connection..."
         mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883
         if timeout 20 mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883 >/dev/null 2>&1; then
