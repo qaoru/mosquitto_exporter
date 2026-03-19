@@ -55,6 +55,13 @@ jobs:
         image: eclipse-mosquitto:2.0.15
         ports:
           - 1883:1883
+        options: >-
+          --entrypoint mosquitto
+          -c /mosquitto-no-auth.conf
+          --health-cmd="mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=15
     steps:
     - uses: actions/checkout@v4
 
@@ -91,9 +98,7 @@ jobs:
         sleep 15
         
         # Test that Mosquitto is actually accepting connections
-        set -x
         echo "Testing Mosquitto connection..."
-        mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883
         if timeout 20 mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883 >/dev/null 2>&1; then
             echo "✓ Mosquitto is ready and accepting connections"
         else
