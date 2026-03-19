@@ -55,9 +55,9 @@ jobs:
         image: eclipse-mosquitto:2.0.15
         ports:
           - 1883:1883
+        volumes:
+          - ${{ github.workspace }}/test/mosquitto.conf:/mosquitto/config/mosquitto.conf
         options: >-
-          --entrypoint mosquitto
-          -c /mosquitto-no-auth.conf
           --health-cmd="mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883"
           --health-interval=5s
           --health-timeout=5s
