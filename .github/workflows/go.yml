@@ -50,18 +50,6 @@ jobs:
     name: Integration Tests
     needs: test
     runs-on: ubuntu-latest
-    services:
-      mosquitto:
-        image: eclipse-mosquitto:2.0.15
-        ports:
-          - 1883:1883
-        volumes:
-          - ${{ github.workspace }}/test/mosquitto.conf:/mosquitto/config/mosquitto.conf
-        options: >-
-          --health-cmd="mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=15
     steps:
     - uses: actions/checkout@v4
 
@@ -73,37 +61,45 @@ jobs:
     - name: Install dependencies
       run: go mod tidy
 
-    - name: Install mosquitto clients
-      run: sudo apt-get update && sudo apt-get install -y mosquitto-clients netcat-openbsd
+    - name: Install mosquitto
+      run: sudo apt-get update && sudo apt-get install -y mosquitto mosquitto-clients netcat-openbsd
 
-    - name: Wait for Mosquitto to be ready
+    - name: Start Mosquitto with no-auth config
       run: |
+        echo "Starting Mosquitto with no-auth configuration..."
+        # Create a simple configuration file
+        echo "listener 1883
+allow_anonymous true
+persistence false" | sudo tee /etc/mosquitto/conf.d/no-auth.conf
+        
+        # Start Mosquitto service
+        sudo systemctl start mosquitto
+        
+        # Wait for Mosquitto to be ready
         echo "Waiting for Mosquitto to be ready..."
-        # GitHub Actions service containers can take time to start
-        # Wait for TCP port to be available
-        for i in {1..60}; do
+        for i in {1..30}; do
           if nc -z localhost 1883; then
-            echo "Mosquitto port is open!"
+            echo "Mosquitto is ready!"
             break
           fi
           sleep 1
-          if [ $((i % 10)) -eq 0 ]; then
-            echo "Waiting for Mosquitto... ($i/60)"
+          if [ $((i % 5)) -eq 0 ]; then
+            echo "Waiting for Mosquitto... ($i/30)"
           fi
         done
         nc -z localhost 1883 || exit 1
         
-        # Wait additional time for Mosquitto to fully initialize
-        echo "Waiting for Mosquitto to fully initialize..."
-        sleep 15
-        
-        # Test that Mosquitto is actually accepting connections
+        # Test that Mosquitto is accepting connections
         echo "Testing Mosquitto connection..."
-        if timeout 20 mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883 >/dev/null 2>&1; then
+        if timeout 10 mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883 >/dev/null 2>&1; then
             echo "✓ Mosquitto is ready and accepting connections"
         else
-            echo "⚠ Mosquitto connection test failed, but port is open - proceeding anyway"
+            echo "⚠ Mosquitto connection test failed, but port is open"
         fi
+
+    - name: Test exporter with real Mosquitto
+      run: |
+        echo "Testing exporter with real Mosquitto broker..."
         
         # Start the exporter in the background with retry logic
         echo "Starting exporter..."
@@ -112,7 +108,7 @@ jobs:
             EXPORTER_PID=$!
             
             # Give it time to start and connect
-            sleep 15
+            sleep 10
             
             # Test if metrics are being served
             if curl -s http://localhost:9344/metrics | grep -q "mosquitto_"; then
@@ -121,7 +117,7 @@ jobs:
             else
                 echo "✗ Exporter failed to start, retrying ($i/3)..."
                 kill $EXPORTER_PID || true
-                sleep 5
+                sleep 3
                 if [ $i -eq 3 ]; then
                     echo "✗ Exporter failed to start after 3 attempts"
                     exit 1
@@ -135,12 +131,12 @@ jobs:
             METRICS=$(curl -s http://localhost:9344/metrics || echo "")
             if [ -z "$METRICS" ]; then
                 echo "✗ No metrics received, retrying ($i/5)..."
-                sleep 5
+                sleep 3
                 continue
             fi
             
-            echo "Metrics received (first 20 lines):"
-            echo "$METRICS" | head -20
+            echo "Metrics received (first 15 lines):"
+            echo "$METRICS" | head -15
             
             # Verify we get Mosquitto metrics
             if echo "$METRICS" | grep -q "mosquitto_"; then
@@ -148,7 +144,7 @@ jobs:
                 break
             else
                 echo "✗ Mosquitto metrics not found, retrying ($i/5)..."
-                sleep 5
+                sleep 3
                 if [ $i -eq 5 ]; then
                     echo "✗ Mosquitto metrics not found after 5 attempts"
                     exit 1
@@ -171,6 +167,10 @@ jobs:
         sleep 2
         
         echo "✅ Integration tests passed!"
+
+    - name: Stop Mosquitto
+      if: always()
+      run: sudo systemctl stop mosquitto || true
 
   build:
     name: Build and Verify
