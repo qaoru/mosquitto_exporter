@@ -80,7 +80,7 @@ jobs:
         # GitHub Actions service containers can take time to start
         # Wait for TCP port to be available
         for i in {1..60}; do
-          if nc -z mosquitto 1883; then
+          if nc -z localhost 1883; then
             echo "Mosquitto port is open!"
             break
           fi
@@ -89,7 +89,7 @@ jobs:
             echo "Waiting for Mosquitto... ($i/60)"
           fi
         done
-        nc -z mosquitto 1883 || exit 1
+        nc -z localhost 1883 || exit 1
         
         # Wait additional time for Mosquitto to fully initialize
         echo "Waiting for Mosquitto to fully initialize..."
@@ -97,7 +97,7 @@ jobs:
         
         # Test that Mosquitto is actually accepting connections
         echo "Testing Mosquitto connection..."
-        if timeout 20 mosquitto_sub -t '$SYS/broker/version' -C 1 -h mosquitto -p 1883 >/dev/null 2>&1; then
+        if timeout 20 mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883 >/dev/null 2>&1; then
             echo "✓ Mosquitto is ready and accepting connections"
         else
             echo "⚠ Mosquitto connection test failed, but port is open - proceeding anyway"
@@ -106,7 +106,7 @@ jobs:
         # Start the exporter in the background with retry logic
         echo "Starting exporter..."
         for i in {1..3}; do
-            go run . --mqtt.broker=tcp://mosquitto:1883 --collector.clients --collector.messages --collector.load &
+            go run . --mqtt.broker=tcp://localhost:1883 --collector.clients --collector.messages --collector.load &
             EXPORTER_PID=$!
             
             # Give it time to start and connect
