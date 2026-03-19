@@ -66,12 +66,6 @@ jobs:
 
     - name: Start Mosquitto with no-auth config
       run: |
-        echo "Starting Mosquitto with no-auth configuration..."
-        # Create a simple configuration file
-        echo "listener 1883
-allow_anonymous true
-persistence false" | sudo tee /etc/mosquitto/conf.d/no-auth.conf
-        
         # Start Mosquitto service
         sudo systemctl start mosquitto
         
