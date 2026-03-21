@@ -91,3 +91,32 @@ func TestClientsCollector_ClientsHandler(t *testing.T) {
 		assert.Equal(t, tc.expectedValue, float64(num))
 	}
 }
+
+func TestClientsCollector_ClientsHandler_Integration(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewClientsCollector(labels)
+
+	testCases := []struct {
+		topic   string
+		payload string
+		expectedKey string
+		expectedValue float64
+	}{
+		{"$SYS/broker/clients/active", "10", "active", 10},
+		{"$SYS/broker/clients/connected", "8", "connected", 8},
+		{"$SYS/broker/clients/disconnected", "2", "disconnected", 2},
+		{"$SYS/broker/clients/expired", "1", "expired", 1},
+		{"$SYS/broker/clients/inactive", "3", "inactive", 3},
+		{"$SYS/broker/clients/maximum", "15", "maximum", 15},
+		{"$SYS/broker/clients/total", "20", "total", 20},
+	}
+
+	for _, tc := range testCases {
+		msg := &mockMessage{
+			payload: []byte(tc.payload),
+			topic:   tc.topic,
+		}
+		collector.clientsHandler(nil, msg)
+		assert.Equal(t, tc.expectedValue, collector.Metrics[tc.expectedKey])
+	}
+}

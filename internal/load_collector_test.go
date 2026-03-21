@@ -94,3 +94,28 @@ func TestLoadCollector_LoadHandler(t *testing.T) {
 		assert.Equal(t, tc.expectedValue, num)
 	}
 }
+
+func TestLoadCollector_LoadHandler_Integration(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewLoadCollector(labels)
+
+	testCases := []struct {
+		topic   string
+		payload string
+		expectedKey string
+		expectedValue float64
+	}{
+		{"$SYS/broker/load/connections/1min", "1.5", "connections_1min", 1.5},
+		{"$SYS/broker/load/bytes/received/5min", "2048.0", "bytes_received_5min", 2048.0},
+		{"$SYS/broker/load/messages/sent/15min", "128.0", "messages_sent_15min", 128.0},
+	}
+
+	for _, tc := range testCases {
+		msg := &mockMessage{
+			payload: []byte(tc.payload),
+			topic:   tc.topic,
+		}
+		collector.loadHandler(nil, msg)
+		assert.Equal(t, tc.expectedValue, collector.Metrics[tc.expectedKey])
+	}
+}

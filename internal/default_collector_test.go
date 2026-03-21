@@ -9,6 +9,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// mockMessage implements mqtt.Message for testing
+type mockMessage struct {
+	payload []byte
+	topic   string
+}
+
+func (m *mockMessage) Duplicate() bool { return false }
+func (m *mockMessage) Qos() byte       { return 0 }
+func (m *mockMessage) Retained() bool  { return false }
+func (m *mockMessage) Topic() string   { return m.topic }
+func (m *mockMessage) MessageID() uint16 { return 0 }
+func (m *mockMessage) Payload() []byte { return m.payload }
+func (m *mockMessage) Ack()            {}
+
 func TestNewDefaultCollector(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
 	collector := NewDefaultCollector(labels)
@@ -87,4 +101,48 @@ func TestDefaultCollector_SharedSubscriptionsHandler(t *testing.T) {
 	payload := []byte("24")
 	num, _ := strconv.Atoi(string(payload))
 	assert.Equal(t, 24, num)
+}
+
+func TestDefaultCollector_UptimeHandler_Integration(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewDefaultCollector(labels)
+	
+	// Create mock message with uptime payload
+	msg := &mockMessage{payload: []byte("12345 seconds")}
+	
+	// Call the handler directly
+	collector.uptimeHandler(nil, msg)
+	
+	// Verify the metric was updated
+	assert.Equal(t, float64(12345), collector.Metrics.uptime)
+}
+
+func TestDefaultCollector_VersionHandler_Integration(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewDefaultCollector(labels)
+	
+	msg := &mockMessage{payload: []byte("mosquitto version 2.0.15")}
+	collector.versionHandler(nil, msg)
+	
+	assert.Equal(t, "2.0.15", collector.Metrics.version)
+}
+
+func TestDefaultCollector_SubscriptionsHandler_Integration(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewDefaultCollector(labels)
+	
+	msg := &mockMessage{payload: []byte("42")}
+	collector.subscriptionsHandler(nil, msg)
+	
+	assert.Equal(t, float64(42), collector.Metrics.subscriptions)
+}
+
+func TestDefaultCollector_SharedSubscriptionsHandler_Integration(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewDefaultCollector(labels)
+	
+	msg := &mockMessage{payload: []byte("24")}
+	collector.sharedSubscriptionsHandler(nil, msg)
+	
+	assert.Equal(t, float64(24), collector.Metrics.sharedSubscriptions)
 }
