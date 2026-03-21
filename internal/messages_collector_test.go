@@ -109,3 +109,52 @@ func TestMessagesCollector_StoredMessagesHandler(t *testing.T) {
 		assert.Equal(t, tc.expectedValue, float64(num))
 	}
 }
+
+func TestMessagesCollector_MessagesHandler_Integration(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewMessagesCollector(labels)
+
+	testCases := []struct {
+		topic   string
+		payload string
+		expectedKey string
+		expectedValue float64
+	}{
+		{"$SYS/broker/messages/received", "100", "received", 100},
+		{"$SYS/broker/messages/sent", "95", "sent", 95},
+		{"$SYS/broker/messages/inflight", "3", "inflight", 3},
+	}
+
+	for _, tc := range testCases {
+		msg := &mockMessage{
+			payload: []byte(tc.payload),
+			topic:   tc.topic,
+		}
+		collector.messagesHandler(nil, msg)
+		assert.Equal(t, tc.expectedValue, collector.Metrics[tc.expectedKey])
+	}
+}
+
+func TestMessagesCollector_StoredMessagesHandler_Integration(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewMessagesCollector(labels)
+
+	testCases := []struct {
+		topic   string
+		payload string
+		expectedKey string
+		expectedValue float64
+	}{
+		{"$SYS/broker/store/messages/count", "5", "stored_count", 5},
+		{"$SYS/broker/store/messages/bytes", "1024", "stored_bytes", 1024},
+	}
+
+	for _, tc := range testCases {
+		msg := &mockMessage{
+			payload: []byte(tc.payload),
+			topic:   tc.topic,
+		}
+		collector.storedMessagesHandler(nil, msg)
+		assert.Equal(t, tc.expectedValue, collector.Metrics[tc.expectedKey])
+	}
+}
