@@ -1,8 +1,7 @@
 package internal
 
 import (
-	"fmt"
-	"os"
+	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -76,8 +75,8 @@ func (collector *LoadCollector) Collect(ch chan<- prometheus.Metric) {
 
 func (collector *LoadCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/load/#", 0, collector.loadHandler); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
-		os.Exit(1)
+		log.Printf("Failed to subscribe to $SYS/broker/load/#: %v", token.Error())
+		SubscriptionErrors.WithLabelValues("$SYS/broker/load/#", token.Error().Error()).Inc()
 	}
 }
 

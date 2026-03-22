@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/alecthomas/kingpin"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -11,9 +13,14 @@ import (
 	"github.com/qaoru/mosquitto_exporter/internal"
 )
 
-func connectHandler(client mqtt.Client) {
-	log.Println("Connected")
-}
+
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+	builtBy = "unknown"
+)
 
 var (
 	webListenAddress = kingpin.Flag("web.listen-address", "Address on which the web server will listen.").Default(":9344").String()
@@ -32,11 +39,17 @@ var (
 
 func main() {
 	kingpin.CommandLine.HelpFlag.Short('h')
+	kingpin.Version(fmt.Sprintf("%s (commit %s, built %s by %s)", version, commit, date, builtBy))
 	kingpin.Parse()
 	mqttOptions := mqtt.NewClientOptions().AddBroker(*broker)
 	constLabels["broker"] = *broker
 	mqttOptions.SetClientID(*clientID)
-	mqttOptions.SetOnConnectHandler(connectHandler)
+	mqttOptions.SetAutoReconnect(true)
+	mqttOptions.SetConnectRetry(true)
+	mqttOptions.SetResumeSubs(true)
+	mqttOptions.SetCleanSession(false)
+	mqttOptions.SetMaxReconnectInterval(30 * time.Second)
+	mqttOptions.SetConnectTimeout(5 * time.Second)
 	if username != nil {
 		mqttOptions.SetUsername(*username)
 	}
@@ -44,10 +57,24 @@ func main() {
 		mqttOptions.SetPassword(*password)
 	}
 
+	// Create up collector and register it
+	upCollector := internal.NewUpCollector(constLabels)
+	prometheus.MustRegister(upCollector)
+
+	// Set up connection handlers
+	mqttOptions.SetOnConnectHandler(func(client mqtt.Client) {
+		log.Println("Connected to broker")
+		upCollector.SetUp(true)
+	})
+	mqttOptions.SetConnectionLostHandler(func(client mqtt.Client, err error) {
+		log.Printf("Connection lost: %v", err)
+		upCollector.SetUp(false)
+	})
+
 	client := mqtt.NewClient(mqttOptions)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		panic(token.Error())
-	}
+	client.Connect()
+	log.Println("Attempting to connect to broker (async)")
+	// Connection result will be handled by OnConnectHandler and ConnectionLostHandler
 
 	defer client.Disconnect(250)
 
@@ -70,6 +97,13 @@ func main() {
 	defaultCollector := internal.NewDefaultCollector(constLabels)
 	defaultCollector.Subscribe(client)
 	prometheus.MustRegister(defaultCollector)
+
+	// Health endpoint
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
 	http.Handle(*webTelemetryPath, promhttp.Handler())
+	log.Printf("Starting server on %s", *webListenAddress)
 	http.ListenAndServe(*webListenAddress, nil)
 }
