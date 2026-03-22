@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -13,6 +14,13 @@ import (
 )
 
 
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+	builtBy = "unknown"
+)
 
 var (
 	webListenAddress = kingpin.Flag("web.listen-address", "Address on which the web server will listen.").Default(":9344").String()
@@ -31,12 +39,15 @@ var (
 
 func main() {
 	kingpin.CommandLine.HelpFlag.Short('h')
+	kingpin.Version(fmt.Sprintf("%s (commit %s, built %s by %s)", version, commit, date, builtBy))
 	kingpin.Parse()
 	mqttOptions := mqtt.NewClientOptions().AddBroker(*broker)
 	constLabels["broker"] = *broker
 	mqttOptions.SetClientID(*clientID)
 	mqttOptions.SetAutoReconnect(true)
 	mqttOptions.SetConnectRetry(true)
+	mqttOptions.SetResumeSubs(true)
+	mqttOptions.SetCleanSession(false)
 	mqttOptions.SetMaxReconnectInterval(30 * time.Second)
 	mqttOptions.SetConnectTimeout(5 * time.Second)
 	if username != nil {
