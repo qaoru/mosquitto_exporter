@@ -63,9 +63,11 @@ func (collector *MessagesCollector) Collect(ch chan<- prometheus.Metric) {
 func (collector *MessagesCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/messages/#", 0, collector.messagesHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/messages/#: %v", token.Error())
+		SubscriptionErrors.WithLabelValues("$SYS/broker/messages/#", token.Error().Error()).Inc()
 	}
 	if token := client.Subscribe("$SYS/broker/store/messages/#", 0, collector.storedMessagesHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/store/messages/#: %v", token.Error())
+		SubscriptionErrors.WithLabelValues("$SYS/broker/store/messages/#", token.Error().Error()).Inc()
 	}
 }
 

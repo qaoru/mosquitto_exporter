@@ -67,15 +67,19 @@ func (collector *DefaultCollector) Collect(ch chan<- prometheus.Metric) {
 func (collector *DefaultCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/uptime", 0, collector.uptimeHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/uptime: %v", token.Error())
+		SubscriptionErrors.WithLabelValues("$SYS/broker/uptime", token.Error().Error()).Inc()
 	}
 	if token := client.Subscribe("$SYS/broker/version", 0, collector.versionHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/version: %v", token.Error())
+		SubscriptionErrors.WithLabelValues("$SYS/broker/version", token.Error().Error()).Inc()
 	}
 	if token := client.Subscribe("$SYS/broker/subscriptions/count", 0, collector.subscriptionsHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/subscriptions/count: %v", token.Error())
+		SubscriptionErrors.WithLabelValues("$SYS/broker/subscriptions/count", token.Error().Error()).Inc()
 	}
 	if token := client.Subscribe("$SYS/broker/shared_subscriptions/count", 0, collector.sharedSubscriptionsHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/shared_subscriptions/count: %v", token.Error())
+		SubscriptionErrors.WithLabelValues("$SYS/broker/shared_subscriptions/count", token.Error().Error()).Inc()
 	}
 }
 

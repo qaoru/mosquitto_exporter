@@ -76,6 +76,7 @@ func (collector *LoadCollector) Collect(ch chan<- prometheus.Metric) {
 func (collector *LoadCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/load/#", 0, collector.loadHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/load/#: %v", token.Error())
+		SubscriptionErrors.WithLabelValues("$SYS/broker/load/#", token.Error().Error()).Inc()
 	}
 }
 

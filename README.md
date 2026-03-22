@@ -93,6 +93,7 @@ By default, only the basic collector (uptime, version, subscription counts) is e
 | Metric | Type | Description |
 |--------|------|-------------|
 | `mosquitto_up` | Gauge | Whether the exporter is connected to the broker (1 = up, 0 = down). |
+| `mosquitto_subscription_errors_total` | Counter | Total number of subscription errors, labeled by topic and error. |
 | `mosquitto_uptime_seconds` | Counter | Seconds since the broker was started. |
 | `mosquitto_version_info` | Gauge | Mosquitto version (label `version`). |
 | `mosquitto_subscriptions_total` | Gauge | Number of active subscriptions. |
