@@ -13,6 +13,8 @@ builds:
     binary: mosquitto_exporter
     env:
       - CGO_ENABLED=0
+    buildvcs: false
+    trimpath: true
     goos:
       - linux
       - darwin
@@ -45,6 +47,24 @@ archives:
     files:
       - LICENSE
       - README.md
+
+dockers:
+  - image_templates:
+      - "ghcr.io/{{ .Env.IMAGE_NAME }}:{{ .Version }}"
+      - "ghcr.io/{{ .Env.IMAGE_NAME }}:latest"
+      - "docker.io/{{ .Env.DOCKERHUB_USERNAME }}/mosquitto_exporter:{{ .Version }}"
+      - "docker.io/{{ .Env.DOCKERHUB_USERNAME }}/mosquitto_exporter:latest"
+    dockerfile: Dockerfile
+    use: buildx
+    goos: [linux]
+    goarch: [amd64, arm64]
+    build_flag_templates:
+      - "--platform=linux/amd64,linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .Commit }}"
+    skip_push: false
 
 checksum:
   name_template: 'checksums.txt'
