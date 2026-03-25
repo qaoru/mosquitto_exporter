@@ -1,4 +1,4 @@
 FROM gcr.io/distroless/static-debian13
 ARG TARGETPLATFORM
-COPY $TARGETPLATFORM/myprogram /usr/bin/
+COPY $TARGETPLATFORM/mosquitto_exporter /mosquitto_exporter
 ENTRYPOINT ["/mosquitto_exporter"]
