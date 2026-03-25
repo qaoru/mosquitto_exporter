@@ -1,5 +1,4 @@
-# GoReleaser configuration
-# https://goreleaser.com
+version: 2  # ← Add this at the very top
 
 project_name: mosquitto_exporter
 
@@ -23,7 +22,7 @@ builds:
       - amd64
       - arm64
     goarm:
-      - 7
+      - "7"
     ignore:
       - goos: windows
         goarch: arm64
@@ -33,7 +32,7 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]  # ← was `format: tar.gz`
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
@@ -43,7 +42,7 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]  # ← was `format: zip`
     files:
       - LICENSE
       - README.md
@@ -56,8 +55,8 @@ dockers:
       - "docker.io/{{ .Env.DOCKERHUB_USERNAME }}/mosquitto_exporter:latest"
     dockerfile: Dockerfile
     use: buildx
-    goos: [linux]
-    goarch: [amd64, arm64]
+    goos: linux
+    goarch: amd64
     build_flag_templates:
       - "--platform=linux/amd64,linux/arm64"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
