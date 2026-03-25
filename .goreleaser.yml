@@ -12,8 +12,9 @@ builds:
     binary: mosquitto_exporter
     env:
       - CGO_ENABLED=0
-    buildvcs: false
-    trimpath: true
+    flags:
+      - -buildvcs=false
+      - -trimpath
     goos:
       - linux
       - darwin
@@ -47,23 +48,24 @@ archives:
       - LICENSE
       - README.md
 
-dockers:
-  - image_templates:
-      - "ghcr.io/{{ .Env.IMAGE_NAME }}:{{ .Version }}"
-      - "ghcr.io/{{ .Env.IMAGE_NAME }}:latest"
-      - "docker.io/{{ .Env.DOCKERHUB_USERNAME }}/mosquitto_exporter:{{ .Version }}"
-      - "docker.io/{{ .Env.DOCKERHUB_USERNAME }}/mosquitto_exporter:latest"
-    dockerfile: Dockerfile
-    use: buildx
-    goos: linux
-    goarch: amd64
-    build_flag_templates:
-      - "--platform=linux/amd64,linux/arm64"
-      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.revision={{ .Commit }}"
-    skip_push: false
+dockers_v2:
+  - dockerfile: Dockerfile
+    ids:
+      - mosquitto_exporter
+    images:
+      - "ghcr.io/{{ .Env.IMAGE_NAME }}"
+      - "docker.io/{{ .Env.DOCKERHUB_USERNAME }}/mosquitto_exporter"
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      "org.opencontainers.image.title": "{{ .ProjectName }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.created": "{{ .Date }}"
+      "org.opencontainers.image.revision": "{{ .Commit }}"
 
 checksum:
   name_template: 'checksums.txt'
