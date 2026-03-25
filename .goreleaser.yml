@@ -49,7 +49,9 @@ archives:
       - README.md
 
 dockers_v2:
-  - dockerfile: Dockerfile
+  - dockerfile: Dockerfile.release
+    disable: "{{ .IsSnapshot }}"
+    sbom: "{{ not .IsNightly }}"
     ids:
       - mosquitto_exporter
     images:
