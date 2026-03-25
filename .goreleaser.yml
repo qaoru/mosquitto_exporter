@@ -59,6 +59,7 @@ dockers_v2:
       - "docker.io/{{ .Env.DOCKERHUB_USERNAME }}/mosquitto_exporter"
     tags:
       - "{{ .Version }}"
+      - "v{{ .Version }}"
       - latest
     platforms:
       - linux/amd64
