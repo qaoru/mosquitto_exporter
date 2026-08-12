@@ -1,11 +1,11 @@
 package internal
 
 import (
-	"strconv"
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -62,62 +62,14 @@ func TestMessagesCollector_Collect(t *testing.T) {
 	assert.Equal(t, 5, count)
 }
 
-func TestMessagesCollector_MessagesHandler(t *testing.T) {
-	// Test different message metrics
-	testCases := []struct {
-		topic   string
-		payload string
-		expectedKey string
-		expectedValue float64
-	}{
-		{"$SYS/broker/messages/received", "100", "received", 100},
-		{"$SYS/broker/messages/sent", "95", "sent", 95},
-		{"$SYS/broker/messages/inflight", "3", "inflight", 3},
-	}
-
-	for _, tc := range testCases {
-		// Simulate the handler logic
-		topicParts := strings.Split(tc.topic, "/")
-		last := topicParts[len(topicParts)-1]
-		num, _ := strconv.Atoi(tc.payload)
-		
-		assert.Equal(t, tc.expectedKey, last)
-		assert.Equal(t, tc.expectedValue, float64(num))
-	}
-}
-
-func TestMessagesCollector_StoredMessagesHandler(t *testing.T) {
-	// Test stored message metrics
-	testCases := []struct {
-		topic   string
-		payload string
-		expectedKey string
-		expectedValue float64
-	}{
-		{"$SYS/broker/store/messages/count", "5", "stored_count", 5},
-		{"$SYS/broker/store/messages/bytes", "1024", "stored_bytes", 1024},
-	}
-
-	for _, tc := range testCases {
-		// Simulate the handler logic
-		topicParts := strings.Split(tc.topic, "/")
-		last := topicParts[len(topicParts)-1]
-		key := "stored_" + last
-		num, _ := strconv.Atoi(tc.payload)
-		
-		assert.Equal(t, tc.expectedKey, key)
-		assert.Equal(t, tc.expectedValue, float64(num))
-	}
-}
-
 func TestMessagesCollector_MessagesHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
 	collector := NewMessagesCollector(labels)
 
 	testCases := []struct {
-		topic   string
-		payload string
-		expectedKey string
+		topic         string
+		payload       string
+		expectedKey   string
 		expectedValue float64
 	}{
 		{"$SYS/broker/messages/received", "100", "received", 100},
@@ -140,9 +92,9 @@ func TestMessagesCollector_StoredMessagesHandler_Integration(t *testing.T) {
 	collector := NewMessagesCollector(labels)
 
 	testCases := []struct {
-		topic   string
-		payload string
-		expectedKey string
+		topic         string
+		payload       string
+		expectedKey   string
 		expectedValue float64
 	}{
 		{"$SYS/broker/store/messages/count", "5", "stored_count", 5},
@@ -157,4 +109,56 @@ func TestMessagesCollector_StoredMessagesHandler_Integration(t *testing.T) {
 		collector.storedMessagesHandler(nil, msg)
 		assert.Equal(t, tc.expectedValue, collector.Metrics[tc.expectedKey])
 	}
+}
+
+func TestMessagesCollector_Subscribe(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewMessagesCollector(labels)
+	client := newMockClient()
+
+	collector.Subscribe(client)
+
+	expected := []string{
+		"$SYS/broker/messages/#",
+		"$SYS/broker/store/messages/#",
+	}
+	assert.ElementsMatch(t, expected, client.subscribedTopics())
+	for _, topic := range expected {
+		assert.NotNil(t, client.handlerFor(topic), "missing handler for %s", topic)
+	}
+}
+
+func TestMessagesCollector_Subscribe_Error(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewMessagesCollector(labels)
+	client := newMockClient().withSubscribeError(errors.New("boom"))
+
+	topics := []string{
+		"$SYS/broker/messages/#",
+		"$SYS/broker/store/messages/#",
+	}
+	before := map[string]float64{}
+	for _, topic := range topics {
+		before[topic] = testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+	}
+
+	collector.Subscribe(client)
+
+	for _, topic := range topics {
+		after := testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+		assert.Equal(t, before[topic]+1, after, "subscription error not counted for %s", topic)
+	}
+}
+
+func TestMessagesCollector_Handlers_ParseError(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewMessagesCollector(labels)
+	collector.Metrics["received"] = 50
+	collector.Metrics["stored_count"] = 7
+
+	collector.messagesHandler(nil, &mockMessage{payload: []byte("notanumber"), topic: "$SYS/broker/messages/received"})
+	collector.storedMessagesHandler(nil, &mockMessage{payload: []byte("notanumber"), topic: "$SYS/broker/store/messages/count"})
+
+	assert.Equal(t, float64(50), collector.Metrics["received"])
+	assert.Equal(t, float64(7), collector.Metrics["stored_count"])
 }

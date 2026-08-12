@@ -1,11 +1,11 @@
 package internal
 
 import (
-	"strconv"
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -64,42 +64,14 @@ func TestClientsCollector_Collect(t *testing.T) {
 	assert.Equal(t, 7, count)
 }
 
-func TestClientsCollector_ClientsHandler(t *testing.T) {
-	// Test different client metrics
-	testCases := []struct {
-		topic   string
-		payload string
-		expectedKey string
-		expectedValue float64
-	}{
-		{"$SYS/broker/clients/active", "10", "active", 10},
-		{"$SYS/broker/clients/connected", "8", "connected", 8},
-		{"$SYS/broker/clients/disconnected", "2", "disconnected", 2},
-		{"$SYS/broker/clients/expired", "1", "expired", 1},
-		{"$SYS/broker/clients/inactive", "3", "inactive", 3},
-		{"$SYS/broker/clients/maximum", "15", "maximum", 15},
-		{"$SYS/broker/clients/total", "20", "total", 20},
-	}
-
-	for _, tc := range testCases {
-		// Simulate the handler logic
-		topicParts := strings.Split(tc.topic, "/")
-		last := topicParts[len(topicParts)-1]
-		num, _ := strconv.Atoi(tc.payload)
-		
-		assert.Equal(t, tc.expectedKey, last)
-		assert.Equal(t, tc.expectedValue, float64(num))
-	}
-}
-
 func TestClientsCollector_ClientsHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
 	collector := NewClientsCollector(labels)
 
 	testCases := []struct {
-		topic   string
-		payload string
-		expectedKey string
+		topic         string
+		payload       string
+		expectedKey   string
 		expectedValue float64
 	}{
 		{"$SYS/broker/clients/active", "10", "active", 10},
@@ -119,4 +91,37 @@ func TestClientsCollector_ClientsHandler_Integration(t *testing.T) {
 		collector.clientsHandler(nil, msg)
 		assert.Equal(t, tc.expectedValue, collector.Metrics[tc.expectedKey])
 	}
+}
+
+func TestClientsCollector_Subscribe(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewClientsCollector(labels)
+	client := newMockClient()
+
+	collector.Subscribe(client)
+
+	assert.ElementsMatch(t, []string{"$SYS/broker/clients/#"}, client.subscribedTopics())
+	assert.NotNil(t, client.handlerFor("$SYS/broker/clients/#"))
+}
+
+func TestClientsCollector_Subscribe_Error(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewClientsCollector(labels)
+	client := newMockClient().withSubscribeError(errors.New("boom"))
+
+	topic := "$SYS/broker/clients/#"
+	before := testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+	collector.Subscribe(client)
+	after := testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+	assert.Equal(t, before+1, after)
+}
+
+func TestClientsCollector_ClientsHandler_ParseError(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewClientsCollector(labels)
+	collector.Metrics["active"] = 42
+
+	collector.clientsHandler(nil, &mockMessage{payload: []byte("notanumber"), topic: "$SYS/broker/clients/active"})
+
+	assert.Equal(t, float64(42), collector.Metrics["active"])
 }
