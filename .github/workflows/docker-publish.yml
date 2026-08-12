@@ -77,6 +77,13 @@ jobs:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_USERNAME }}/mosquitto_exporter
+          # Dev-branch/PR images only. The `:latest` and `:vX.Y.Z` release
+          # tags are owned by the goreleaser release workflow (release.yml) to
+          # avoid both paths racing to push `:latest`.
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,format=short
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action

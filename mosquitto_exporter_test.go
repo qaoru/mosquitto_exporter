@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/qaoru/mosquitto_exporter/internal"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/qaoru/mosquitto_exporter/internal"
 	"github.com/stretchr/testify/assert"
 )
 
