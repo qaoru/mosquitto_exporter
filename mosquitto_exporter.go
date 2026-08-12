@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/alecthomas/kingpin"
@@ -12,8 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/qaoru/mosquitto_exporter/internal"
 )
-
-
 
 var (
 	version = "dev"
@@ -50,21 +53,57 @@ func main() {
 	mqttOptions.SetCleanSession(false)
 	mqttOptions.SetMaxReconnectInterval(30 * time.Second)
 	mqttOptions.SetConnectTimeout(5 * time.Second)
-	if username != nil {
+	if *username != "" {
 		mqttOptions.SetUsername(*username)
 	}
-	if password != nil {
+	if *password != "" {
 		mqttOptions.SetPassword(*password)
 	}
 
-	// Create up collector and register it
+	// Create and register the up collector
 	upCollector := internal.NewUpCollector(constLabels)
 	prometheus.MustRegister(upCollector)
 
-	// Set up connection handlers
+	// Create and register the metric collectors up front so they are always
+	// present in /metrics (with zero values until data arrives). Subscriptions
+	// are (re)established in the OnConnectHandler below, which only fires once
+	// the broker connection is open. This keeps the HTTP server available even
+	// when the broker is unreachable (graceful degradation: mosquitto_up=0).
+	var (
+		clientsColl  *internal.ClientsCollector
+		messagesColl *internal.MessagesCollector
+		loadColl     *internal.LoadCollector
+	)
+	if *clientsCollector {
+		clientsColl = internal.NewClientsCollector(constLabels)
+		prometheus.MustRegister(clientsColl)
+	}
+	if *messagesCollector {
+		messagesColl = internal.NewMessagesCollector(constLabels)
+		prometheus.MustRegister(messagesColl)
+	}
+	if *loadCollector {
+		loadColl = internal.NewLoadCollector(constLabels)
+		prometheus.MustRegister(loadColl)
+	}
+	defaultColl := internal.NewDefaultCollector(constLabels)
+	prometheus.MustRegister(defaultColl)
+
+	// Set up connection handlers. OnConnect runs in its own goroutine, so it
+	// is safe to subscribe synchronously here without blocking main.
 	mqttOptions.SetOnConnectHandler(func(client mqtt.Client) {
 		log.Println("Connected to broker")
 		upCollector.SetUp(true)
+		defaultColl.Subscribe(client)
+		if clientsColl != nil {
+			clientsColl.Subscribe(client)
+		}
+		if messagesColl != nil {
+			messagesColl.Subscribe(client)
+		}
+		if loadColl != nil {
+			loadColl.Subscribe(client)
+		}
 	})
 	mqttOptions.SetConnectionLostHandler(func(client mqtt.Client, err error) {
 		log.Printf("Connection lost: %v", err)
@@ -72,31 +111,10 @@ func main() {
 	})
 
 	client := mqtt.NewClient(mqttOptions)
-	client.Connect()
-	log.Println("Attempting to connect to broker (async)")
-	// Connection result will be handled by OnConnectHandler and ConnectionLostHandler
+	log.Printf("Connecting to broker %s", *broker)
+	client.Connect() // non-blocking: connection is retried in the background
 
 	defer client.Disconnect(250)
-
-	if *clientsCollector {
-		clientsCollector := internal.NewClientsCollector(constLabels)
-		clientsCollector.Subscribe(client)
-		prometheus.MustRegister(clientsCollector)
-	}
-	if *messagesCollector {
-		messagesCollector := internal.NewMessagesCollector(constLabels)
-		messagesCollector.Subscribe(client)
-		prometheus.MustRegister(messagesCollector)
-	}
-	if *loadCollector {
-		loadCollector := internal.NewLoadCollector(constLabels)
-		loadCollector.Subscribe(client)
-		prometheus.MustRegister(loadCollector)
-	}
-
-	defaultCollector := internal.NewDefaultCollector(constLabels)
-	defaultCollector.Subscribe(client)
-	prometheus.MustRegister(defaultCollector)
 
 	// Health endpoint
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +122,23 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 	http.Handle(*webTelemetryPath, promhttp.Handler())
-	log.Printf("Starting server on %s", *webListenAddress)
-	http.ListenAndServe(*webListenAddress, nil)
+
+	srv := &http.Server{Addr: *webListenAddress}
+	go func() {
+		log.Printf("Starting server on %s", *webListenAddress)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("HTTP server failed: %v", err)
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+	log.Println("Shutting down gracefully...")
+
+	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutCtx); err != nil {
+		log.Printf("HTTP shutdown error: %v", err)
+	}
 }

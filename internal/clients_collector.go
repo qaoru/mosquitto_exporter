@@ -10,8 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var ClientMetrics = make(map[string]float64, 16)
-
 type ClientsCollector struct {
 	mu           sync.RWMutex
 	Metrics      map[string]float64
@@ -62,11 +60,10 @@ func (collector *ClientsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (collector *ClientsCollector) Collect(ch chan<- prometheus.Metric) {
-
+	collector.mu.RLock()
+	defer collector.mu.RUnlock()
 	for k, v := range collector.descriptions {
-		collector.mu.RLock()
 		ch <- prometheus.MustNewConstMetric(v.desc, v.valueType, collector.Metrics[k])
-		collector.mu.RUnlock()
 	}
 }
 
@@ -80,7 +77,11 @@ func (collector *ClientsCollector) Subscribe(client mqtt.Client) {
 func (collector *ClientsCollector) clientsHandler(client mqtt.Client, message mqtt.Message) {
 	topic := strings.Split(message.Topic(), "/")
 	last := topic[len(topic)-1]
-	num, _ := strconv.Atoi(string(message.Payload()))
+	num, err := strconv.Atoi(string(message.Payload()))
+	if err != nil {
+		log.Printf("Failed to parse clients metric %q from %q: %v", last, message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics[last] = float64(num)
 	collector.mu.Unlock()

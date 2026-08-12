@@ -85,7 +85,12 @@ func (collector *DefaultCollector) Subscribe(client mqtt.Client) {
 
 func (collector *DefaultCollector) uptimeHandler(client mqtt.Client, message mqtt.Message) {
 	// Payload is 'XXX seconds'
-	uptime, _ := strconv.Atoi(strings.Split(string(message.Payload()), " ")[0])
+	parts := strings.Split(string(message.Payload()), " ")
+	uptime, err := strconv.Atoi(parts[0])
+	if err != nil {
+		log.Printf("Failed to parse uptime from %q: %v", message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics.uptime = float64(uptime)
 	collector.mu.Unlock()
@@ -93,21 +98,34 @@ func (collector *DefaultCollector) uptimeHandler(client mqtt.Client, message mqt
 
 func (collector *DefaultCollector) versionHandler(client mqtt.Client, message mqtt.Message) {
 	// Payload is 'mosquitto version X.X.X'
-	version := strings.Split(string(message.Payload()), " ")[2]
+	parts := strings.Split(string(message.Payload()), " ")
+	if len(parts) < 3 {
+		log.Printf("Unexpected version payload %q", message.Payload())
+		return
+	}
+	version := parts[2]
 	collector.mu.Lock()
 	collector.Metrics.version = version
 	collector.mu.Unlock()
 }
 
 func (collector *DefaultCollector) subscriptionsHandler(client mqtt.Client, message mqtt.Message) {
-	num, _ := strconv.Atoi(string(message.Payload()))
+	num, err := strconv.Atoi(string(message.Payload()))
+	if err != nil {
+		log.Printf("Failed to parse subscriptions count from %q: %v", message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics.subscriptions = float64(num)
 	collector.mu.Unlock()
 }
 
 func (collector *DefaultCollector) sharedSubscriptionsHandler(client mqtt.Client, message mqtt.Message) {
-	num, _ := strconv.Atoi(string(message.Payload()))
+	num, err := strconv.Atoi(string(message.Payload()))
+	if err != nil {
+		log.Printf("Failed to parse shared subscriptions count from %q: %v", message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics.sharedSubscriptions = float64(num)
 	collector.mu.Unlock()

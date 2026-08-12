@@ -34,7 +34,7 @@ func NewMessagesCollector(labels prometheus.Labels) *MessagesCollector {
 				valueType: prometheus.GaugeValue,
 			},
 			"stored_bytes": {
-				desc:      prometheus.NewDesc("mosquitto_stored_messages_bytes", "Stored messages size in bytse", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_stored_messages_bytes", "Stored messages size in bytes", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"inflight": {
@@ -52,11 +52,10 @@ func (collector *MessagesCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (collector *MessagesCollector) Collect(ch chan<- prometheus.Metric) {
-
+	collector.mu.RLock()
+	defer collector.mu.RUnlock()
 	for k, v := range collector.descriptions {
-		collector.mu.RLock()
 		ch <- prometheus.MustNewConstMetric(v.desc, v.valueType, collector.Metrics[k])
-		collector.mu.RUnlock()
 	}
 }
 
@@ -74,7 +73,11 @@ func (collector *MessagesCollector) Subscribe(client mqtt.Client) {
 func (collector *MessagesCollector) messagesHandler(client mqtt.Client, message mqtt.Message) {
 	topic := strings.Split(message.Topic(), "/")
 	last := topic[len(topic)-1]
-	num, _ := strconv.Atoi(string(message.Payload()))
+	num, err := strconv.Atoi(string(message.Payload()))
+	if err != nil {
+		log.Printf("Failed to parse messages metric %q from %q: %v", last, message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics[last] = float64(num)
 	collector.mu.Unlock()
@@ -83,7 +86,11 @@ func (collector *MessagesCollector) messagesHandler(client mqtt.Client, message 
 func (collector *MessagesCollector) storedMessagesHandler(client mqtt.Client, message mqtt.Message) {
 	topic := strings.Split(message.Topic(), "/")
 	last := topic[len(topic)-1]
-	num, _ := strconv.Atoi(string(message.Payload()))
+	num, err := strconv.Atoi(string(message.Payload()))
+	if err != nil {
+		log.Printf("Failed to parse stored messages metric %q from %q: %v", last, message.Payload(), err)
+		return
+	}
 	key := "stored_" + last
 	collector.mu.Lock()
 	collector.Metrics[key] = float64(num)
