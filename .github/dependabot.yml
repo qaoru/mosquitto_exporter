@@ -9,3 +9,7 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+  - package-ecosystem: "github-actions" # Keeps workflow actions (e.g.
+    directory: "/" # golangci-lint-action, setup-go, goreleaser-action) current.
+    schedule:
+      interval: "weekly"
