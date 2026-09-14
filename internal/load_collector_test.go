@@ -123,3 +123,14 @@ func TestLoadCollector_LoadHandler_ParseError(t *testing.T) {
 
 	assert.Equal(t, 9.9, collector.Metrics["connections_1min"])
 }
+
+func TestLoadCollector_LoadHandler_RejectsNonFinite(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
+	collector.Metrics["connections_1min"] = 1.5
+
+	for _, payload := range []string{"NaN", "nan", "+Inf", "-Inf", "Infinity"} {
+		collector.loadHandler(nil, &mockMessage{payload: []byte(payload), topic: "$SYS/broker/load/connections/1min"})
+		assert.Equal(t, 1.5, collector.Metrics["connections_1min"], "non-finite payload %q overwrote stored value", payload)
+	}
+}

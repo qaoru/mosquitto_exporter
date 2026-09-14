@@ -2,6 +2,7 @@ package internal
 
 import (
 	"log"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,6 +94,10 @@ func (collector *LoadCollector) loadHandler(client mqtt.Client, message mqtt.Mes
 	num, err := strconv.ParseFloat(string(message.Payload()), 64)
 	if err != nil {
 		log.Printf("Failed to parse load metric from topic %q: %v", message.Topic(), err)
+		return
+	}
+	if math.IsNaN(num) || math.IsInf(num, 0) {
+		log.Printf("Ignoring non-finite load value from %q: %v", message.Topic(), num)
 		return
 	}
 	collector.mu.Lock()

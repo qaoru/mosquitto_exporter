@@ -146,8 +146,8 @@ non-blocking and its token is currently ignored.
   without overwriting the previously stored value**. Existing tests assert this
   (`*_Handler_ParseError` / `*_Handlers_ParseErrors`); preserve the behavior.
 - Use `strconv.Atoi` for integer $SYS payloads and `strconv.ParseFloat` for
-  load values. Note load parsing does not yet reject `NaN`/`Inf` (see Known
-  issues).
+  load values. Load parsing rejects non-finite values (`NaN`/`Inf`) after
+  parsing; keep that guard for any new `ParseFloat`-based handler.
 - Keep metric names unique across collectors and update `README.md`'s metrics
   tables and `grafana-dashboard.json` when adding/renaming metrics.
 - Tests: add a `NewXCollector`, `Describe`, `Collect`, handler integration,
@@ -189,9 +189,12 @@ related changes:
   container runs non-root and is compatible with Pod Security Standards
   `restricted`. Binding to a privileged port (<1024) now needs a
   `securityContext` override.
-- **`strconv.ParseFloat` accepts `NaN`/`Inf`** in the load handler; a
-  non-finite payload would later panic in `MustNewConstMetric` during a scrape.
-  Reject non-finite values after parsing.
+- **`strconv.ParseFloat` accepted `NaN`/`Inf`** in the load handler; a
+  non-finite $SYS payload would be exported as `NaN`/`+Inf`, breaking
+  dashboards/alerts and risking Prometheus ingestion rejection of the scrape.
+  **Fixed**: the load handler now rejects non-finite values after parsing and
+  leaves the previously stored value intact. (Verified client_golang does not
+  panic on NaN for gauges, so the impact was data quality, not a crash.)
 - **No HTTP server timeouts** (`ReadTimeout`/`WriteTimeout`/`IdleTimeout`).
 - **`--web.telemetry-path=/healthz` panics** at startup (double registration
   on `DefaultServeMux`). Validate the path or guard the healthz registration.
