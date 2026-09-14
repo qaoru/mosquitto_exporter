@@ -183,9 +183,12 @@ related changes:
   suffix on the inflight metric). Fixing this is **breaking** (dashboards,
   alerts, and the bundled `grafana-dashboard.json` reference current names) —
   coordinate with a major version bump.
-- **Docker images run as root** — neither Dockerfile sets `USER`. The
-  distroless/static image ships a `nonroot` user (UID 65534); add
-  `USER nonroot:nonroot` before `ENTRYPOINT`.
+- **Docker images previously ran as root** — neither Dockerfile set `USER`.
+  The distroless/static image ships a `nonroot` user (UID 65534). **Fixed**:
+  both Dockerfiles now set `USER nonroot:nonroot` before `ENTRYPOINT`; the
+  container runs non-root and is compatible with Pod Security Standards
+  `restricted`. Binding to a privileged port (<1024) now needs a
+  `securityContext` override.
 - **`strconv.ParseFloat` accepts `NaN`/`Inf`** in the load handler; a
   non-finite payload would later panic in `MustNewConstMetric` during a scrape.
   Reject non-finite values after parsing.

@@ -31,6 +31,12 @@ docker run -d -p 9344:9344 ghcr.io/qaoru/mosquitto_exporter \
     --collector.load
 ```
 
+The container image runs as a non-root user (`nonroot`, UID/GID 65532) for
+defense in depth and compatibility with Kubernetes Pod Security Standards
+`restricted`. The exporter listens on `:9344` by default (an unprivileged
+port); binding it to a port below 1024 requires a `securityContext` override
+or a port mapping.
+
 ### Binary release
 
 Automated binary releases are created via [GoReleaser](https://goreleaser.com) when a new version tag is pushed. Download the latest binary for your platform from the [Releases](https://github.com/qaoru/mosquitto_exporter/releases) page.
