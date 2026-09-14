@@ -59,7 +59,6 @@ func main() {
 	mqttOptions.SetClientID(*clientID)
 	mqttOptions.SetAutoReconnect(true)
 	mqttOptions.SetConnectRetry(true)
-	mqttOptions.SetResumeSubs(true)
 	mqttOptions.SetCleanSession(false)
 	mqttOptions.SetMaxReconnectInterval(30 * time.Second)
 	mqttOptions.SetConnectTimeout(5 * time.Second)
