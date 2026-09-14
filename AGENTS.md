@@ -178,11 +178,15 @@ related changes:
   with the `broker` const label, constructed and registered in `main()`, and
   passed into each collector. Tests use a per-test unregistered counter for
   isolation.
-- **Metric naming violates Prometheus conventions** (`_count` on gauges,
-  `_total` on gauges, `_count` instead of `_total` on counters, `_gauge`
-  suffix on the inflight metric). Fixing this is **breaking** (dashboards,
-  alerts, and the bundled `grafana-dashboard.json` reference current names) —
-  coordinate with a major version bump.
+- **Metric naming previously violated Prometheus conventions** (`_count` on
+  gauges, `_total` on gauges, `_count` instead of `_total` on counters,
+  `_gauge` suffix on the inflight metric). **Fixed in v2.0**: clients gauges
+  dropped `_count`; message counters became `_total` and were aligned to the
+  `mosquitto_messages_*` family (matching the load collector);
+  `subscriptions`/`shared_subscriptions` gauges dropped `_total`; the inflight
+  gauge dropped `_gauge`. The bundled `grafana-dashboard.json` and README were
+  updated in lockstep; a v1.x→v2.0 migration table is in the README. This was
+  a breaking change -> major version bump.
 - **Docker images previously ran as root** — neither Dockerfile set `USER`.
   The distroless/static image ships a `nonroot` user (UID 65534). **Fixed**:
   both Dockerfiles now set `USER nonroot:nonroot` before `ENTRYPOINT`; the

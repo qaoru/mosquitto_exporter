@@ -24,23 +24,23 @@ func NewMessagesCollector(labels prometheus.Labels, subErrors *prometheus.Counte
 		subscriptionErrors: subErrors,
 		descriptions: map[string]metric{
 			"received": {
-				desc:      prometheus.NewDesc("mosquitto_received_messages_count", "Number of received messages", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_messages_received_total", "Number of received messages", nil, labels),
 				valueType: prometheus.CounterValue,
 			},
 			"sent": {
-				desc:      prometheus.NewDesc("mosquitto_sent_messages_count", "Number of sent messages", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_messages_sent_total", "Number of sent messages", nil, labels),
 				valueType: prometheus.CounterValue,
 			},
 			"stored_count": {
-				desc:      prometheus.NewDesc("mosquitto_stored_messages_count", "Number of stored messages", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_messages_stored", "Number of stored messages", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"stored_bytes": {
-				desc:      prometheus.NewDesc("mosquitto_stored_messages_bytes", "Stored messages size in bytes", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_messages_stored_bytes", "Stored messages size in bytes", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"inflight": {
-				desc:      prometheus.NewDesc("mosquitto_inflight_messages_gauge", "Number of inflight messages", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_messages_inflight", "Number of inflight messages", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 		},

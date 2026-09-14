@@ -24,31 +24,31 @@ func NewClientsCollector(labels prometheus.Labels, subErrors *prometheus.Counter
 		subscriptionErrors: subErrors,
 		descriptions: map[string]metric{
 			"active": {
-				desc:      prometheus.NewDesc("mosquitto_active_clients_count", "Number of active clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_active_clients", "Number of active clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"connected": {
-				desc:      prometheus.NewDesc("mosquitto_connected_clients_count", "Number of connected clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_connected_clients", "Number of connected clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"disconnected": {
-				desc:      prometheus.NewDesc("mosquitto_disconnected_clients_count", "Number of disconnected clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_disconnected_clients", "Number of disconnected clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"expired": {
-				desc:      prometheus.NewDesc("mosquitto_expired_clients_count", "Number of expired clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_expired_clients", "Number of expired clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"inactive": {
-				desc:      prometheus.NewDesc("mosquitto_inactive_clients_count", "Number of inactive clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_inactive_clients", "Number of inactive clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"maximum": {
-				desc:      prometheus.NewDesc("mosquitto_maximum_clients_count", "Maximum number of simultaneously connected clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_maximum_clients", "Maximum number of simultaneously connected clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"total": {
-				desc:      prometheus.NewDesc("mosquitto_total_clients_count", "Total number of clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_total_clients", "Total number of clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 		},

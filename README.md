@@ -102,30 +102,30 @@ By default, only the basic collector (uptime, version, subscription counts) is e
 | `mosquitto_subscription_errors_total` | Counter | Total number of subscription errors, labeled by topic and error. |
 | `mosquitto_uptime_seconds` | Counter | Seconds since the broker was started. |
 | `mosquitto_version_info` | Gauge | Mosquitto version (label `version`). |
-| `mosquitto_subscriptions_total` | Gauge | Number of active subscriptions. |
-| `mosquitto_shared_subscriptions_total` | Gauge | Number of active shared subscriptions. |
+| `mosquitto_subscriptions` | Gauge | Number of active subscriptions. |
+| `mosquitto_shared_subscriptions` | Gauge | Number of active shared subscriptions. |
 
 ### Enabled with `--collector.clients`
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `mosquitto_active_clients_count` | Gauge | Number of active clients. |
-| `mosquitto_connected_clients_count` | Gauge | Number of connected clients. |
-| `mosquitto_disconnected_clients_count` | Gauge | Number of disconnected clients. |
-| `mosquitto_expired_clients_count` | Gauge | Number of expired clients. |
-| `mosquitto_inactive_clients_count` | Gauge | Number of inactive clients. |
-| `mosquitto_maximum_clients_count` | Gauge | Maximum number of simultaneously connected clients. |
-| `mosquitto_total_clients_count` | Gauge | Total number of clients. |
+| `mosquitto_active_clients` | Gauge | Number of active clients. |
+| `mosquitto_connected_clients` | Gauge | Number of connected clients. |
+| `mosquitto_disconnected_clients` | Gauge | Number of disconnected clients. |
+| `mosquitto_expired_clients` | Gauge | Number of expired clients. |
+| `mosquitto_inactive_clients` | Gauge | Number of inactive clients. |
+| `mosquitto_maximum_clients` | Gauge | Maximum number of simultaneously connected clients. |
+| `mosquitto_total_clients` | Gauge | Total number of clients. |
 
 ### Enabled with `--collector.messages`
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `mosquitto_received_messages_count` | Counter | Total number of messages received. |
-| `mosquitto_sent_messages_count` | Counter | Total number of messages sent. |
-| `mosquitto_stored_messages_count` | Gauge | Number of messages currently stored. |
-| `mosquitto_stored_messages_bytes` | Gauge | Total size of stored messages in bytes. |
-| `mosquitto_inflight_messages_gauge` | Gauge | Number of inflight messages. |
+| `mosquitto_messages_received_total` | Counter | Total number of messages received. |
+| `mosquitto_messages_sent_total` | Counter | Total number of messages sent. |
+| `mosquitto_messages_stored` | Gauge | Number of messages currently stored. |
+| `mosquitto_messages_stored_bytes` | Gauge | Total size of stored messages in bytes. |
+| `mosquitto_messages_inflight` | Gauge | Number of inflight messages. |
 
 ### Enabled with `--collector.load`
 
@@ -149,6 +149,33 @@ are stripped before being used as the label value, so the label contains only
 `scheme://host:port`. Prefer the `--mqtt.username` / `--mqtt.password` flags
 (or `MQTT_USERNAME` / `MQTT_PASSWORD` env vars) over embedding credentials in
 the URL.
+
+### Upgrading from v1.x (metric renames)
+
+v2.0.0 renames several metrics to follow Prometheus naming conventions
+(counters end in `_total`, gauges do not use `_total`/`_count`, no type names
+in metric names) and aligns the messages collector with the
+`mosquitto_messages_*` family used by the load collector. Update your
+dashboards and alerts accordingly:
+
+| v1.x name | v2.0 name |
+|---|---|
+| `mosquitto_active_clients_count` | `mosquitto_active_clients` |
+| `mosquitto_connected_clients_count` | `mosquitto_connected_clients` |
+| `mosquitto_disconnected_clients_count` | `mosquitto_disconnected_clients` |
+| `mosquitto_expired_clients_count` | `mosquitto_expired_clients` |
+| `mosquitto_inactive_clients_count` | `mosquitto_inactive_clients` |
+| `mosquitto_maximum_clients_count` | `mosquitto_maximum_clients` |
+| `mosquitto_total_clients_count` | `mosquitto_total_clients` |
+| `mosquitto_received_messages_count` | `mosquitto_messages_received_total` |
+| `mosquitto_sent_messages_count` | `mosquitto_messages_sent_total` |
+| `mosquitto_stored_messages_count` | `mosquitto_messages_stored` |
+| `mosquitto_stored_messages_bytes` | `mosquitto_messages_stored_bytes` |
+| `mosquitto_inflight_messages_gauge` | `mosquitto_messages_inflight` |
+| `mosquitto_subscriptions_total` | `mosquitto_subscriptions` |
+| `mosquitto_shared_subscriptions_total` | `mosquitto_shared_subscriptions` |
+
+The bundled `grafana-dashboard.json` has been updated to the new names.
 
 ## Health endpoint
 

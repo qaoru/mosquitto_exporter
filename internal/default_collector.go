@@ -39,11 +39,11 @@ func NewDefaultCollector(labels prometheus.Labels, subErrors *prometheus.Counter
 				valueType: prometheus.GaugeValue,
 			},
 			"subscriptions_total": {
-				desc:      prometheus.NewDesc("mosquitto_subscriptions_total", "Number of active subscriptions", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_subscriptions", "Number of active subscriptions", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"shared_subscriptions_total": {
-				desc:      prometheus.NewDesc("mosquitto_shared_subscriptions_total", "Number of active shared subscriptions", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_shared_subscriptions", "Number of active shared subscriptions", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 		},
