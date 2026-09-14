@@ -2,6 +2,7 @@ package internal
 
 import (
 	"log"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,15 +29,17 @@ func genLoadDescription(t prometheus.ValueType, fqName string, help string, vari
 }
 
 type LoadCollector struct {
-	mu           sync.RWMutex
-	Metrics      map[string]float64
-	descriptions map[string][3]metric
+	mu                 sync.RWMutex
+	Metrics            map[string]float64
+	descriptions       map[string][3]metric
+	subscriptionErrors *prometheus.CounterVec
 }
 
-func NewLoadCollector(labels prometheus.Labels) *LoadCollector {
+func NewLoadCollector(labels prometheus.Labels, subErrors *prometheus.CounterVec) *LoadCollector {
 	return &LoadCollector{
-		mu:      sync.RWMutex{},
-		Metrics: make(map[string]float64, 32),
+		mu:                 sync.RWMutex{},
+		Metrics:            make(map[string]float64, 32),
+		subscriptionErrors: subErrors,
 		descriptions: map[string][3]metric{
 			"connections":       genLoadDescription(prometheus.GaugeValue, "mosquitto_connections", "The moving average of the number of connections opened to the broker", nil, labels),
 			"sockets":           genLoadDescription(prometheus.GaugeValue, "mosquitto_sockets", "The moving average of the number of socket connections opened to the broker", nil, labels),
@@ -60,23 +63,22 @@ func (collector *LoadCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (collector *LoadCollector) Collect(ch chan<- prometheus.Metric) {
-
+	collector.mu.RLock()
+	defer collector.mu.RUnlock()
 	for k, v := range collector.descriptions {
 		k1 := k + "_1min"
 		k2 := k + "_5min"
 		k3 := k + "_15min"
-		collector.mu.RLock()
 		ch <- prometheus.MustNewConstMetric(v[0].desc, v[0].valueType, collector.Metrics[k1])
 		ch <- prometheus.MustNewConstMetric(v[1].desc, v[1].valueType, collector.Metrics[k2])
 		ch <- prometheus.MustNewConstMetric(v[2].desc, v[2].valueType, collector.Metrics[k3])
-		collector.mu.RUnlock()
 	}
 }
 
 func (collector *LoadCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/load/#", 0, collector.loadHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/load/#: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/load/#", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/load/#", token.Error().Error()).Inc()
 	}
 }
 
@@ -89,7 +91,15 @@ func (collector *LoadCollector) loadHandler(client mqtt.Client, message mqtt.Mes
 	case 6:
 		key = topic[3] + "_" + topic[4] + "_" + topic[5]
 	}
-	num, _ := strconv.ParseFloat(string(message.Payload()), 64)
+	num, err := strconv.ParseFloat(string(message.Payload()), 64)
+	if err != nil {
+		log.Printf("Failed to parse load metric from topic %q: %v", message.Topic(), err)
+		return
+	}
+	if math.IsNaN(num) || math.IsInf(num, 0) {
+		log.Printf("Ignoring non-finite load value from %q: %v", message.Topic(), num)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics[key] = float64(num)
 	collector.mu.Unlock()

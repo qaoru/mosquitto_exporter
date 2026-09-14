@@ -1,4 +1,5 @@
 FROM gcr.io/distroless/static-debian13
 ARG TARGETPLATFORM
 COPY $TARGETPLATFORM/mosquitto_exporter /mosquitto_exporter
+USER nonroot:nonroot
 ENTRYPOINT ["/mosquitto_exporter"]

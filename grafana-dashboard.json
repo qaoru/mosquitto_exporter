@@ -264,7 +264,7 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "expr": "mosquitto_subscriptions_total{broker=~\"$broker\"}",
+          "expr": "mosquitto_subscriptions{broker=~\"$broker\"}",
           "legendFormat": "{{broker}}",
           "refId": "A"
         }
@@ -319,7 +319,7 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "expr": "mosquitto_shared_subscriptions_total{broker=~\"$broker\"}",
+          "expr": "mosquitto_shared_subscriptions{broker=~\"$broker\"}",
           "legendFormat": "{{broker}}",
           "refId": "A"
         }
@@ -573,22 +573,22 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "expr": "mosquitto_active_clients_count{broker=~\"$broker\"}",
+          "expr": "mosquitto_active_clients{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Active",
           "refId": "A"
         },
         {
-          "expr": "mosquitto_connected_clients_count{broker=~\"$broker\"}",
+          "expr": "mosquitto_connected_clients{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Connected",
           "refId": "B"
         },
         {
-          "expr": "mosquitto_disconnected_clients_count{broker=~\"$broker\"}",
+          "expr": "mosquitto_disconnected_clients{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Disconnected",
           "refId": "C"
         },
         {
-          "expr": "mosquitto_inactive_clients_count{broker=~\"$broker\"}",
+          "expr": "mosquitto_inactive_clients{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Inactive",
           "refId": "D"
         }
@@ -677,17 +677,17 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "expr": "mosquitto_total_clients_count{broker=~\"$broker\"}",
+          "expr": "mosquitto_total_clients{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Total",
           "refId": "A"
         },
         {
-          "expr": "mosquitto_maximum_clients_count{broker=~\"$broker\"}",
+          "expr": "mosquitto_maximum_clients{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Maximum",
           "refId": "B"
         },
         {
-          "expr": "mosquitto_expired_clients_count{broker=~\"$broker\"}",
+          "expr": "mosquitto_expired_clients{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Expired",
           "refId": "C"
         }
@@ -803,12 +803,12 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "expr": "rate(mosquitto_received_messages_count{broker=~\"$broker\"}[$__rate_interval])",
+          "expr": "rate(mosquitto_messages_received_total{broker=~\"$broker\"}[$__rate_interval])",
           "legendFormat": "{{broker}} - Received/s",
           "refId": "Rx"
         },
         {
-          "expr": "rate(mosquitto_sent_messages_count{broker=~\"$broker\"}[$__rate_interval])",
+          "expr": "rate(mosquitto_messages_sent_total{broker=~\"$broker\"}[$__rate_interval])",
           "legendFormat": "{{broker}} - Sent/s",
           "refId": "Tx"
         }
@@ -898,12 +898,12 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "expr": "mosquitto_stored_messages_count{broker=~\"$broker\"}",
+          "expr": "mosquitto_messages_stored{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Stored",
           "refId": "A"
         },
         {
-          "expr": "mosquitto_inflight_messages_gauge{broker=~\"$broker\"}",
+          "expr": "mosquitto_messages_inflight{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Inflight",
           "refId": "B"
         }
@@ -993,7 +993,7 @@
       "pluginVersion": "12.3.1",
       "targets": [
         {
-          "expr": "mosquitto_stored_messages_bytes{broker=~\"$broker\"}",
+          "expr": "mosquitto_messages_stored_bytes{broker=~\"$broker\"}",
           "legendFormat": "{{broker}} - Bytes Stored",
           "refId": "A"
         }

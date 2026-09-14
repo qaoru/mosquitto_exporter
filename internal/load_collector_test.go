@@ -1,17 +1,17 @@
 package internal
 
 import (
-	"strconv"
-	"strings"
+	"errors"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewLoadCollector(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 
 	assert.NotNil(t, collector)
 	assert.NotNil(t, collector.Metrics)
@@ -21,7 +21,7 @@ func TestNewLoadCollector(t *testing.T) {
 
 func TestLoadCollector_Describe(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 
 	descriptions := make(chan *prometheus.Desc)
 	go func() {
@@ -40,7 +40,7 @@ func TestLoadCollector_Describe(t *testing.T) {
 
 func TestLoadCollector_Collect(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 
 	// Set some test values
 	collector.Metrics["connections_1min"] = 1.5
@@ -65,44 +65,14 @@ func TestLoadCollector_Collect(t *testing.T) {
 	assert.Equal(t, 27, count)
 }
 
-func TestLoadCollector_LoadHandler(t *testing.T) {
-	// Test different load metric topics
-	testCases := []struct {
-		topic   string
-		payload string
-		expectedKey string
-		expectedValue float64
-	}{
-		{"$SYS/broker/load/connections/1min", "1.5", "connections_1min", 1.5},
-		{"$SYS/broker/load/bytes/received/5min", "2048.0", "bytes_received_5min", 2048.0},
-		{"$SYS/broker/load/messages/sent/15min", "128.0", "messages_sent_15min", 128.0},
-	}
-
-	for _, tc := range testCases {
-		// Simulate the handler logic
-		topicParts := strings.Split(tc.topic, "/")
-		var key string
-		switch len(topicParts) {
-		case 5:
-			key = topicParts[3] + "_" + topicParts[4]
-		case 6:
-			key = topicParts[3] + "_" + topicParts[4] + "_" + topicParts[5]
-		}
-		num, _ := strconv.ParseFloat(tc.payload, 64)
-		
-		assert.Equal(t, tc.expectedKey, key)
-		assert.Equal(t, tc.expectedValue, num)
-	}
-}
-
 func TestLoadCollector_LoadHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 
 	testCases := []struct {
-		topic   string
-		payload string
-		expectedKey string
+		topic         string
+		payload       string
+		expectedKey   string
 		expectedValue float64
 	}{
 		{"$SYS/broker/load/connections/1min", "1.5", "connections_1min", 1.5},
@@ -117,5 +87,50 @@ func TestLoadCollector_LoadHandler_Integration(t *testing.T) {
 		}
 		collector.loadHandler(nil, msg)
 		assert.Equal(t, tc.expectedValue, collector.Metrics[tc.expectedKey])
+	}
+}
+
+func TestLoadCollector_Subscribe(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
+	client := newMockClient()
+
+	collector.Subscribe(client)
+
+	assert.ElementsMatch(t, []string{"$SYS/broker/load/#"}, client.subscribedTopics())
+	assert.NotNil(t, client.handlerFor("$SYS/broker/load/#"))
+}
+
+func TestLoadCollector_Subscribe_Error(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	subErr := newTestSubscriptionErrors(t)
+	collector := NewLoadCollector(labels, subErr)
+	client := newMockClient().withSubscribeError(errors.New("boom"))
+
+	topic := "$SYS/broker/load/#"
+	before := testutil.ToFloat64(subErr.WithLabelValues(topic, "boom"))
+	collector.Subscribe(client)
+	after := testutil.ToFloat64(subErr.WithLabelValues(topic, "boom"))
+	assert.Equal(t, before+1, after)
+}
+
+func TestLoadCollector_LoadHandler_ParseError(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
+	collector.Metrics["connections_1min"] = 9.9
+
+	collector.loadHandler(nil, &mockMessage{payload: []byte("notanumber"), topic: "$SYS/broker/load/connections/1min"})
+
+	assert.Equal(t, 9.9, collector.Metrics["connections_1min"])
+}
+
+func TestLoadCollector_LoadHandler_RejectsNonFinite(t *testing.T) {
+	labels := prometheus.Labels{"broker": "test-broker"}
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
+	collector.Metrics["connections_1min"] = 1.5
+
+	for _, payload := range []string{"NaN", "nan", "+Inf", "-Inf", "Infinity"} {
+		collector.loadHandler(nil, &mockMessage{payload: []byte(payload), topic: "$SYS/broker/load/connections/1min"})
+		assert.Equal(t, 1.5, collector.Metrics["connections_1min"], "non-finite payload %q overwrote stored value", payload)
 	}
 }

@@ -9,6 +9,17 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# Least-privilege token. id-token:write allows codecov-action v4+ to perform
+# tokenless OIDC uploads.
+permissions:
+  contents: read
+  id-token: write
+
+# Cancel superseded runs on PRs; let branch pushes complete.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
 
   test:
@@ -18,33 +29,38 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.26'
+        go-version: '1.25'
 
-    - name: Install dependencies
-      run: go mod tidy
+    - name: Download dependencies
+      run: go mod download
 
-    - name: Run unit tests
-      run: go test -v ./...
-
-    - name: Run unit tests with coverage
-      run: go test ./... -coverprofile=coverage.out -covermode=atomic
+    - name: Run unit tests with coverage and race detector
+      # Single invocation: -v output, -race over the mutex/shared-map
+      # concurrency between paho handler goroutines and scrape goroutines,
+      # and coverage in one pass.
+      run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
-        file: coverage.out
+        files: coverage.out
         flags: unittests
         name: codecov-umbrella
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: false
 
     - name: Check for common issues
-      run: |
-        echo "Checking for common Go issues..."
-        go vet ./...
-        golangci-lint run ./... || echo "golangci-lint not installed, skipping"
+      run: go vet ./...
+
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v7
+      with:
+        # v2.4.0 is the first golangci-lint release to support Go 1.25
+        # (official binaries are built with Go 1.25). Pinned for
+        # reproducibility; bump alongside the go.mod Go floor.
+        version: v2.4.0
 
   integration-test:
     name: Integration Tests
@@ -54,112 +70,134 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.26'
+        go-version: '1.25'
 
-    - name: Install dependencies
-      run: go mod tidy
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build exporter binary
+      # Build once and run the binary directly. Using `go run .` in a retry
+      # loop is both slow (recompiles per attempt) and buggy: $! is the PID
+      # of the `go` process, not the compiled child, so killing it orphans
+      # the child holding the listen port and poisons subsequent retries.
+      run: go build -o /tmp/mosquitto_exporter .
 
     - name: Install mosquitto
       run: sudo apt-get update && sudo apt-get install -y mosquitto mosquitto-clients netcat-openbsd
 
-    - name: Start Mosquitto with no-auth config
+    - name: Show mosquitto version
+      # Log the broker version for post-mortem in case of a future Mosquitto
+      # release that changes $SYS behavior. AGENTS.md targets v2.0.x.
+      run: mosquitto -h 2>&1 | head -5 || true
+
+    - name: Start Mosquitto and wait for $SYS data
       run: |
-        # Start Mosquitto service
+        set -euo pipefail
         sudo systemctl start mosquitto
-        
-        # Wait for Mosquitto to be ready
-        echo "Waiting for Mosquitto to be ready..."
+
+        echo "Waiting for Mosquitto to open port 1883..."
         for i in {1..30}; do
           if nc -z localhost 1883; then
-            echo "Mosquitto is ready!"
+            echo "✓ Port 1883 is open"
             break
           fi
           sleep 1
-          if [ $((i % 5)) -eq 0 ]; then
-            echo "Waiting for Mosquitto... ($i/30)"
-          fi
         done
-        nc -z localhost 1883 || exit 1
-        
-        # Test that Mosquitto is accepting connections
-        echo "Testing Mosquitto connection..."
-        if timeout 10 mosquitto_sub -t '$SYS/broker/version' -C 1 -h localhost -p 1883 >/dev/null 2>&1; then
-            echo "✓ Mosquitto is ready and accepting connections"
+        nc -z localhost 1883 || { echo "✗ Mosquitto never opened port 1883"; exit 1; }
+
+        # Wait for a real $SYS/broker/uptime publish before scraping. This
+        # guarantees the broker is actually emitting $SYS data (not just
+        # listening), so the exporter's subscriptions will have something to
+        # receive once it connects. Deterministic unlike a fixed sleep.
+        echo "Waiting for first \$SYS/broker/uptime publish..."
+        if timeout 30 mosquitto_sub -t '$SYS/broker/uptime' -C 1 -h localhost -p 1883 >/dev/null; then
+          echo "✓ Mosquitto is publishing \$SYS data"
         else
-            echo "⚠ Mosquitto connection test failed, but port is open"
+          echo "✗ No \$SYS publish received from Mosquitto"
+          sudo systemctl status mosquitto --no-pager -l || true
+          exit 1
         fi
 
-    - name: Test exporter with real Mosquitto
+    - name: Run exporter and verify metrics
       run: |
-        echo "Testing exporter with real Mosquitto broker..."
-        
-        # Start the exporter in the background with retry logic
-        echo "Starting exporter..."
-        for i in {1..3}; do
-            go run . --mqtt.broker=tcp://localhost:1883 --collector.clients --collector.messages --collector.load &
-            EXPORTER_PID=$!
-            
-            # Give it time to start and connect
-            sleep 10
-            
-            # Test if metrics are being served
-            if curl -s http://localhost:9344/metrics | grep -q "mosquitto_"; then
-                echo "✓ Exporter started successfully"
-                break
-            else
-                echo "✗ Exporter failed to start, retrying ($i/3)..."
-                kill $EXPORTER_PID || true
-                sleep 3
-                if [ $i -eq 3 ]; then
-                    echo "✗ Exporter failed to start after 3 attempts"
-                    exit 1
-                fi
-            fi
+        set -euo pipefail
+
+        /tmp/mosquitto_exporter \
+          --mqtt.broker=tcp://localhost:1883 \
+          --collector.clients --collector.messages --collector.load &
+        EXPORTER_PID=$!
+        # Kill the actual exporter (the binary, not a `go run` parent) on exit.
+        trap 'kill $EXPORTER_PID 2>/dev/null || true' EXIT
+
+        # The HTTP server starts independently of the broker connection, so
+        # /healthz is the right readiness signal — poll instead of sleep.
+        echo "Waiting for exporter /healthz..."
+        for i in {1..30}; do
+          if curl -fsS http://localhost:9344/healthz >/dev/null 2>&1; then
+            echo "✓ Exporter is serving /healthz"
+            break
+          fi
+          sleep 1
         done
-        
-        # Test that metrics are being served
-        echo "Verifying metrics..."
-        for i in {1..5}; do
-            METRICS=$(curl -s http://localhost:9344/metrics || echo "")
-            if [ -z "$METRICS" ]; then
-                echo "✗ No metrics received, retrying ($i/5)..."
-                sleep 3
-                continue
-            fi
-            
-            echo "Metrics received (first 15 lines):"
-            echo "$METRICS" | head -15
-            
-            # Verify we get Mosquitto metrics
-            if echo "$METRICS" | grep -q "mosquitto_"; then
-                echo "✓ Mosquitto metrics found!"
-                break
-            else
-                echo "✗ Mosquitto metrics not found, retrying ($i/5)..."
-                sleep 3
-                if [ $i -eq 5 ]; then
-                    echo "✗ Mosquitto metrics not found after 5 attempts"
-                    exit 1
-                fi
-            fi
+        curl -fsS http://localhost:9344/healthz || { echo "✗ Exporter never became ready"; exit 1; }
+
+        # mosquitto_up flips to 1 only after OnConnect fires and
+        # subscriptions are (re)established. This is the real signal that the
+        # broker path works — the presence of zero-valued mosquitto_* metrics
+        # alone is NOT sufficient (graceful degradation emits them with
+        # mosquitto_up=0 even when the broker is unreachable).
+        echo "Waiting for mosquitto_up == 1..."
+        UP=""
+        for i in {1..30}; do
+          # Metrics carry a `broker` const label, so a line looks like
+          # `mosquitto_up{broker="..."} 1` — match the name followed by `{` or space.
+          UP=$(curl -fsS http://localhost:9344/metrics | awk '/^mosquitto_up[{ ]/{print $2; exit}')
+          if [ "$UP" = "1" ]; then
+            echo "✓ mosquitto_up=1"
+            break
+          fi
+          sleep 1
         done
-        
-        # Verify we get specific metrics
-        echo "Verifying specific metrics..."
-        if echo "$METRICS" | grep -q "mosquitto_uptime"; then
-            echo "✓ Uptime metrics found!"
-        else
-            echo "✗ Uptime metrics not found"
-            exit 1
+        if [ "$UP" != "1" ]; then
+          echo "✗ Exporter never connected to broker (mosquitto_up=$UP)"
+          exit 1
         fi
-        
-        # Clean up
-        echo "Cleaning up..."
-        kill $EXPORTER_PID || true
-        sleep 2
-        
+
+        METRICS=$(curl -fsS http://localhost:9344/metrics)
+
+        # Assert that specific metrics are actually emitted. Each opt-in
+        # collector was enabled via flags above, so a regression that broke
+        # its registration or subscription must fail the build.
+        check_metric() {
+          local name="$1"
+          if echo "$METRICS" | grep -q "^${name}\b"; then
+            echo "✓ ${name} found"
+          else
+            echo "✗ ${name} not found"
+            exit 1
+          fi
+        }
+
+        # Core (always-on) collector
+        check_metric mosquitto_uptime_seconds
+        check_metric mosquitto_version_info
+        # Opt-in: clients
+        check_metric mosquitto_maximum_clients
+        # Opt-in: messages
+        check_metric mosquitto_messages_stored
+        # Opt-in: load (emits _load1/_load5/_load15 variants per key)
+        check_metric mosquitto_connections_load1
+
+        # Sanity: uptime should be non-zero now that the broker is publishing.
+        UPTIME=$(echo "$METRICS" | awk '/^mosquitto_uptime_seconds[{ ]/{print $2; exit}')
+        echo "mosquitto_uptime_seconds=$UPTIME"
+
+        echo
+        echo "Metrics sample:"
+        echo "$METRICS" | grep -E '^(mosquitto_up|mosquitto_uptime_seconds|mosquitto_maximum_clients|mosquitto_messages_stored|mosquitto_connections_load1)[{ ]' | head -20
+
         echo "✅ Integration tests passed!"
 
     - name: Stop Mosquitto
@@ -174,12 +212,12 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.26'
+        go-version: '1.25'
 
-    - name: Install dependencies
-      run: go mod tidy
+    - name: Download dependencies
+      run: go mod download
 
     - name: Build
       run: go build -v ./...
@@ -188,4 +226,7 @@ jobs:
       run: go build -race -v ./...
 
     - name: Verify no unused dependencies
+      # Authoritative tidy check: `go mod download` is used for setup in the
+      # other jobs, so an untidy go.mod/go.sum is caught here rather than
+      # silently tidied before tests run.
       run: go mod tidy && git diff --exit-code go.mod go.sum || (echo "Unused dependencies found" && exit 1)

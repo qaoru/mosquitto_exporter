@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/qaoru/mosquitto_exporter/internal"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/qaoru/mosquitto_exporter/internal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,15 +22,16 @@ func TestMainFunctionality(t *testing.T) {
 	assert.Equal(t, "test", constLabels["environment"])
 
 	// Test that collectors can be created
-	defaultCollector := internal.NewDefaultCollector(constLabels)
+	subErrors := internal.NewSubscriptionErrors(constLabels)
+	defaultCollector := internal.NewDefaultCollector(constLabels, subErrors)
 	assert.NotNil(t, defaultCollector)
 
-	clientsCollector := internal.NewClientsCollector(constLabels)
+	clientsCollector := internal.NewClientsCollector(constLabels, subErrors)
 	assert.NotNil(t, clientsCollector)
 
-	messagesCollector := internal.NewMessagesCollector(constLabels)
+	messagesCollector := internal.NewMessagesCollector(constLabels, subErrors)
 	assert.NotNil(t, messagesCollector)
 
-	loadCollector := internal.NewLoadCollector(constLabels)
+	loadCollector := internal.NewLoadCollector(constLabels, subErrors)
 	assert.NotNil(t, loadCollector)
 }

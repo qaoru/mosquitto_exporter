@@ -10,45 +10,45 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var ClientMetrics = make(map[string]float64, 16)
-
 type ClientsCollector struct {
-	mu           sync.RWMutex
-	Metrics      map[string]float64
-	descriptions map[string]metric
+	mu                 sync.RWMutex
+	Metrics            map[string]float64
+	descriptions       map[string]metric
+	subscriptionErrors *prometheus.CounterVec
 }
 
-func NewClientsCollector(labels prometheus.Labels) *ClientsCollector {
+func NewClientsCollector(labels prometheus.Labels, subErrors *prometheus.CounterVec) *ClientsCollector {
 	return &ClientsCollector{
-		mu:      sync.RWMutex{},
-		Metrics: make(map[string]float64, 8),
+		mu:                 sync.RWMutex{},
+		Metrics:            make(map[string]float64, 8),
+		subscriptionErrors: subErrors,
 		descriptions: map[string]metric{
 			"active": {
-				desc:      prometheus.NewDesc("mosquitto_active_clients_count", "Number of active clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_active_clients", "Number of active clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"connected": {
-				desc:      prometheus.NewDesc("mosquitto_connected_clients_count", "Number of connected clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_connected_clients", "Number of connected clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"disconnected": {
-				desc:      prometheus.NewDesc("mosquitto_disconnected_clients_count", "Number of disconnected clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_disconnected_clients", "Number of disconnected clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"expired": {
-				desc:      prometheus.NewDesc("mosquitto_expired_clients_count", "Number of expired clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_expired_clients", "Number of expired clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"inactive": {
-				desc:      prometheus.NewDesc("mosquitto_inactive_clients_count", "Number of inactive clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_inactive_clients", "Number of inactive clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"maximum": {
-				desc:      prometheus.NewDesc("mosquitto_maximum_clients_count", "Maximum number of simultaneously connected clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_maximum_clients", "Maximum number of simultaneously connected clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"total": {
-				desc:      prometheus.NewDesc("mosquitto_total_clients_count", "Total number of clients", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_total_clients", "Total number of clients", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 		},
@@ -62,25 +62,28 @@ func (collector *ClientsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (collector *ClientsCollector) Collect(ch chan<- prometheus.Metric) {
-
+	collector.mu.RLock()
+	defer collector.mu.RUnlock()
 	for k, v := range collector.descriptions {
-		collector.mu.RLock()
 		ch <- prometheus.MustNewConstMetric(v.desc, v.valueType, collector.Metrics[k])
-		collector.mu.RUnlock()
 	}
 }
 
 func (collector *ClientsCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/clients/#", 0, collector.clientsHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/clients/#: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/clients/#", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/clients/#", token.Error().Error()).Inc()
 	}
 }
 
 func (collector *ClientsCollector) clientsHandler(client mqtt.Client, message mqtt.Message) {
 	topic := strings.Split(message.Topic(), "/")
 	last := topic[len(topic)-1]
-	num, _ := strconv.Atoi(string(message.Payload()))
+	num, err := strconv.Atoi(string(message.Payload()))
+	if err != nil {
+		log.Printf("Failed to parse clients metric %q from %q: %v", last, message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics[last] = float64(num)
 	collector.mu.Unlock()

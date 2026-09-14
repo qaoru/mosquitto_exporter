@@ -1,4 +1,4 @@
-FROM golang:1.26 as build
+FROM golang:1.25 as build
 
 WORKDIR /go/src/app
 COPY . .
@@ -8,6 +8,6 @@ RUN go mod download
 RUN CGO_ENABLED=0 go build -o /go/bin/mosquitto_exporter
 
 FROM gcr.io/distroless/static-debian13
-
 COPY --from=build /go/bin/mosquitto_exporter /
+USER nonroot:nonroot
 ENTRYPOINT ["/mosquitto_exporter"]

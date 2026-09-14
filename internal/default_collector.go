@@ -18,15 +18,17 @@ type defaultMetrics struct {
 }
 
 type DefaultCollector struct {
-	descriptions map[string]metric
-	mu           sync.RWMutex
-	Metrics      *defaultMetrics
+	descriptions       map[string]metric
+	mu                 sync.RWMutex
+	Metrics            *defaultMetrics
+	subscriptionErrors *prometheus.CounterVec
 }
 
-func NewDefaultCollector(labels prometheus.Labels) *DefaultCollector {
+func NewDefaultCollector(labels prometheus.Labels, subErrors *prometheus.CounterVec) *DefaultCollector {
 	return &DefaultCollector{
-		mu:      sync.RWMutex{},
-		Metrics: &defaultMetrics{},
+		mu:                 sync.RWMutex{},
+		Metrics:            &defaultMetrics{},
+		subscriptionErrors: subErrors,
 		descriptions: map[string]metric{
 			"uptime": {
 				desc:      prometheus.NewDesc("mosquitto_uptime_seconds", "Seconds since the broker was started", nil, labels),
@@ -37,11 +39,11 @@ func NewDefaultCollector(labels prometheus.Labels) *DefaultCollector {
 				valueType: prometheus.GaugeValue,
 			},
 			"subscriptions_total": {
-				desc:      prometheus.NewDesc("mosquitto_subscriptions_total", "Number of active subscriptions", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_subscriptions", "Number of active subscriptions", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 			"shared_subscriptions_total": {
-				desc:      prometheus.NewDesc("mosquitto_shared_subscriptions_total", "Number of active shared subscriptions", nil, labels),
+				desc:      prometheus.NewDesc("mosquitto_shared_subscriptions", "Number of active shared subscriptions", nil, labels),
 				valueType: prometheus.GaugeValue,
 			},
 		},
@@ -67,25 +69,30 @@ func (collector *DefaultCollector) Collect(ch chan<- prometheus.Metric) {
 func (collector *DefaultCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/uptime", 0, collector.uptimeHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/uptime: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/uptime", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/uptime", token.Error().Error()).Inc()
 	}
 	if token := client.Subscribe("$SYS/broker/version", 0, collector.versionHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/version: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/version", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/version", token.Error().Error()).Inc()
 	}
 	if token := client.Subscribe("$SYS/broker/subscriptions/count", 0, collector.subscriptionsHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/subscriptions/count: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/subscriptions/count", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/subscriptions/count", token.Error().Error()).Inc()
 	}
 	if token := client.Subscribe("$SYS/broker/shared_subscriptions/count", 0, collector.sharedSubscriptionsHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/shared_subscriptions/count: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/shared_subscriptions/count", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/shared_subscriptions/count", token.Error().Error()).Inc()
 	}
 }
 
 func (collector *DefaultCollector) uptimeHandler(client mqtt.Client, message mqtt.Message) {
 	// Payload is 'XXX seconds'
-	uptime, _ := strconv.Atoi(strings.Split(string(message.Payload()), " ")[0])
+	parts := strings.Split(string(message.Payload()), " ")
+	uptime, err := strconv.Atoi(parts[0])
+	if err != nil {
+		log.Printf("Failed to parse uptime from %q: %v", message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics.uptime = float64(uptime)
 	collector.mu.Unlock()
@@ -93,21 +100,34 @@ func (collector *DefaultCollector) uptimeHandler(client mqtt.Client, message mqt
 
 func (collector *DefaultCollector) versionHandler(client mqtt.Client, message mqtt.Message) {
 	// Payload is 'mosquitto version X.X.X'
-	version := strings.Split(string(message.Payload()), " ")[2]
+	parts := strings.Split(string(message.Payload()), " ")
+	if len(parts) < 3 {
+		log.Printf("Unexpected version payload %q", message.Payload())
+		return
+	}
+	version := parts[2]
 	collector.mu.Lock()
 	collector.Metrics.version = version
 	collector.mu.Unlock()
 }
 
 func (collector *DefaultCollector) subscriptionsHandler(client mqtt.Client, message mqtt.Message) {
-	num, _ := strconv.Atoi(string(message.Payload()))
+	num, err := strconv.Atoi(string(message.Payload()))
+	if err != nil {
+		log.Printf("Failed to parse subscriptions count from %q: %v", message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics.subscriptions = float64(num)
 	collector.mu.Unlock()
 }
 
 func (collector *DefaultCollector) sharedSubscriptionsHandler(client mqtt.Client, message mqtt.Message) {
-	num, _ := strconv.Atoi(string(message.Payload()))
+	num, err := strconv.Atoi(string(message.Payload()))
+	if err != nil {
+		log.Printf("Failed to parse shared subscriptions count from %q: %v", message.Payload(), err)
+		return
+	}
 	collector.mu.Lock()
 	collector.Metrics.sharedSubscriptions = float64(num)
 	collector.mu.Unlock()
