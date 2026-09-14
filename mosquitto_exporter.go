@@ -138,7 +138,13 @@ func main() {
 	})
 	http.Handle(*webTelemetryPath, promhttp.Handler())
 
-	srv := &http.Server{Addr: *webListenAddress}
+	srv := &http.Server{
+		Addr:              *webListenAddress,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	go func() {
 		log.Printf("Starting server on %s", *webListenAddress)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

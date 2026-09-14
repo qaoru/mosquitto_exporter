@@ -195,7 +195,10 @@ related changes:
   **Fixed**: the load handler now rejects non-finite values after parsing and
   leaves the previously stored value intact. (Verified client_golang does not
   panic on NaN for gauges, so the impact was data quality, not a crash.)
-- **No HTTP server timeouts** (`ReadTimeout`/`WriteTimeout`/`IdleTimeout`).
+- **No HTTP server timeouts** previously (`ReadTimeout`/`WriteTimeout`/`IdleTimeout`).
+  **Fixed**: the server now sets ReadHeaderTimeout 5s, ReadTimeout 10s,
+  WriteTimeout 10s, IdleTimeout 60s. Keep WriteTimeout generous relative to
+  worst-case scrape duration (promhttp runs Collect while writing).
 - **`--web.telemetry-path=/healthz` panics** at startup (double registration
   on `DefaultServeMux`). Validate the path or guard the healthz registration.
 - **No concurrency/format tests**: the mutex-protected paths are not exercised
