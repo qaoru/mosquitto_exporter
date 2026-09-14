@@ -11,15 +11,17 @@ import (
 )
 
 type MessagesCollector struct {
-	mu           sync.RWMutex
-	Metrics      map[string]float64
-	descriptions map[string]metric
+	mu                 sync.RWMutex
+	Metrics            map[string]float64
+	descriptions       map[string]metric
+	subscriptionErrors *prometheus.CounterVec
 }
 
-func NewMessagesCollector(labels prometheus.Labels) *MessagesCollector {
+func NewMessagesCollector(labels prometheus.Labels, subErrors *prometheus.CounterVec) *MessagesCollector {
 	return &MessagesCollector{
-		mu:      sync.RWMutex{},
-		Metrics: make(map[string]float64, 4),
+		mu:                 sync.RWMutex{},
+		Metrics:            make(map[string]float64, 4),
+		subscriptionErrors: subErrors,
 		descriptions: map[string]metric{
 			"received": {
 				desc:      prometheus.NewDesc("mosquitto_received_messages_count", "Number of received messages", nil, labels),
@@ -62,11 +64,11 @@ func (collector *MessagesCollector) Collect(ch chan<- prometheus.Metric) {
 func (collector *MessagesCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/messages/#", 0, collector.messagesHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/messages/#: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/messages/#", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/messages/#", token.Error().Error()).Inc()
 	}
 	if token := client.Subscribe("$SYS/broker/store/messages/#", 0, collector.storedMessagesHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/store/messages/#: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/store/messages/#", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/store/messages/#", token.Error().Error()).Inc()
 	}
 }
 

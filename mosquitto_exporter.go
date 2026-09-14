@@ -73,6 +73,12 @@ func main() {
 	upCollector := internal.NewUpCollector(constLabels)
 	prometheus.MustRegister(upCollector)
 
+	// Shared subscription-error counter, constructed here (not via init()) so
+	// it can carry the `broker` const label and be registered explicitly like
+	// the other collectors. Passed into every collector that subscribes.
+	subscriptionErrors := internal.NewSubscriptionErrors(constLabels)
+	prometheus.MustRegister(subscriptionErrors)
+
 	// Create and register the metric collectors up front so they are always
 	// present in /metrics (with zero values until data arrives). Subscriptions
 	// are (re)established in the OnConnectHandler below, which only fires once
@@ -84,18 +90,18 @@ func main() {
 		loadColl     *internal.LoadCollector
 	)
 	if *clientsCollector {
-		clientsColl = internal.NewClientsCollector(constLabels)
+		clientsColl = internal.NewClientsCollector(constLabels, subscriptionErrors)
 		prometheus.MustRegister(clientsColl)
 	}
 	if *messagesCollector {
-		messagesColl = internal.NewMessagesCollector(constLabels)
+		messagesColl = internal.NewMessagesCollector(constLabels, subscriptionErrors)
 		prometheus.MustRegister(messagesColl)
 	}
 	if *loadCollector {
-		loadColl = internal.NewLoadCollector(constLabels)
+		loadColl = internal.NewLoadCollector(constLabels, subscriptionErrors)
 		prometheus.MustRegister(loadColl)
 	}
-	defaultColl := internal.NewDefaultCollector(constLabels)
+	defaultColl := internal.NewDefaultCollector(constLabels, subscriptionErrors)
 	prometheus.MustRegister(defaultColl)
 
 	// Set up connection handlers. OnConnect runs in its own goroutine, so it

@@ -25,7 +25,7 @@ func (m *mockMessage) Ack()              {}
 
 func TestNewDefaultCollector(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 
 	assert.NotNil(t, collector)
 	assert.NotNil(t, collector.Metrics)
@@ -35,7 +35,7 @@ func TestNewDefaultCollector(t *testing.T) {
 
 func TestDefaultCollector_Describe(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 
 	descriptions := make(chan *prometheus.Desc)
 	go func() {
@@ -53,7 +53,7 @@ func TestDefaultCollector_Describe(t *testing.T) {
 
 func TestDefaultCollector_Collect(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 
 	// Set some test values
 	collector.Metrics.uptime = 123.45
@@ -77,7 +77,7 @@ func TestDefaultCollector_Collect(t *testing.T) {
 
 func TestDefaultCollector_UptimeHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 
 	// Create mock message with uptime payload
 	msg := &mockMessage{payload: []byte("12345 seconds")}
@@ -91,7 +91,7 @@ func TestDefaultCollector_UptimeHandler_Integration(t *testing.T) {
 
 func TestDefaultCollector_VersionHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 
 	msg := &mockMessage{payload: []byte("mosquitto version 2.0.15")}
 	collector.versionHandler(nil, msg)
@@ -101,7 +101,7 @@ func TestDefaultCollector_VersionHandler_Integration(t *testing.T) {
 
 func TestDefaultCollector_SubscriptionsHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 
 	msg := &mockMessage{payload: []byte("42")}
 	collector.subscriptionsHandler(nil, msg)
@@ -111,7 +111,7 @@ func TestDefaultCollector_SubscriptionsHandler_Integration(t *testing.T) {
 
 func TestDefaultCollector_SharedSubscriptionsHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 
 	msg := &mockMessage{payload: []byte("24")}
 	collector.sharedSubscriptionsHandler(nil, msg)
@@ -121,7 +121,7 @@ func TestDefaultCollector_SharedSubscriptionsHandler_Integration(t *testing.T) {
 
 func TestDefaultCollector_Subscribe(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 	client := newMockClient()
 
 	collector.Subscribe(client)
@@ -140,7 +140,8 @@ func TestDefaultCollector_Subscribe(t *testing.T) {
 
 func TestDefaultCollector_Subscribe_Error(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	subErr := newTestSubscriptionErrors(t)
+	collector := NewDefaultCollector(labels, subErr)
 	client := newMockClient().withSubscribeError(errors.New("boom"))
 
 	topics := []string{
@@ -151,20 +152,20 @@ func TestDefaultCollector_Subscribe_Error(t *testing.T) {
 	}
 	before := map[string]float64{}
 	for _, topic := range topics {
-		before[topic] = testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+		before[topic] = testutil.ToFloat64(subErr.WithLabelValues(topic, "boom"))
 	}
 
 	collector.Subscribe(client)
 
 	for _, topic := range topics {
-		after := testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+		after := testutil.ToFloat64(subErr.WithLabelValues(topic, "boom"))
 		assert.Equal(t, before[topic]+1, after, "subscription error not counted for %s", topic)
 	}
 }
 
 func TestDefaultCollector_Handlers_ParseErrors(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewDefaultCollector(labels)
+	collector := NewDefaultCollector(labels, newTestSubscriptionErrors(t))
 	// Seed known values; a malformed payload must not overwrite them.
 	collector.Metrics.uptime = 100
 	collector.Metrics.version = "2.0.0"

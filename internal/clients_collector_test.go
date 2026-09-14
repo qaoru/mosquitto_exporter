@@ -11,7 +11,7 @@ import (
 
 func TestNewClientsCollector(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewClientsCollector(labels)
+	collector := NewClientsCollector(labels, newTestSubscriptionErrors(t))
 
 	assert.NotNil(t, collector)
 	assert.NotNil(t, collector.Metrics)
@@ -21,7 +21,7 @@ func TestNewClientsCollector(t *testing.T) {
 
 func TestClientsCollector_Describe(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewClientsCollector(labels)
+	collector := NewClientsCollector(labels, newTestSubscriptionErrors(t))
 
 	descriptions := make(chan *prometheus.Desc)
 	go func() {
@@ -39,7 +39,7 @@ func TestClientsCollector_Describe(t *testing.T) {
 
 func TestClientsCollector_Collect(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewClientsCollector(labels)
+	collector := NewClientsCollector(labels, newTestSubscriptionErrors(t))
 
 	// Set some test values
 	collector.Metrics["active"] = 10
@@ -66,7 +66,7 @@ func TestClientsCollector_Collect(t *testing.T) {
 
 func TestClientsCollector_ClientsHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewClientsCollector(labels)
+	collector := NewClientsCollector(labels, newTestSubscriptionErrors(t))
 
 	testCases := []struct {
 		topic         string
@@ -95,7 +95,7 @@ func TestClientsCollector_ClientsHandler_Integration(t *testing.T) {
 
 func TestClientsCollector_Subscribe(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewClientsCollector(labels)
+	collector := NewClientsCollector(labels, newTestSubscriptionErrors(t))
 	client := newMockClient()
 
 	collector.Subscribe(client)
@@ -106,19 +106,20 @@ func TestClientsCollector_Subscribe(t *testing.T) {
 
 func TestClientsCollector_Subscribe_Error(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewClientsCollector(labels)
+	subErr := newTestSubscriptionErrors(t)
+	collector := NewClientsCollector(labels, subErr)
 	client := newMockClient().withSubscribeError(errors.New("boom"))
 
 	topic := "$SYS/broker/clients/#"
-	before := testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+	before := testutil.ToFloat64(subErr.WithLabelValues(topic, "boom"))
 	collector.Subscribe(client)
-	after := testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+	after := testutil.ToFloat64(subErr.WithLabelValues(topic, "boom"))
 	assert.Equal(t, before+1, after)
 }
 
 func TestClientsCollector_ClientsHandler_ParseError(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewClientsCollector(labels)
+	collector := NewClientsCollector(labels, newTestSubscriptionErrors(t))
 	collector.Metrics["active"] = 42
 
 	collector.clientsHandler(nil, &mockMessage{payload: []byte("notanumber"), topic: "$SYS/broker/clients/active"})

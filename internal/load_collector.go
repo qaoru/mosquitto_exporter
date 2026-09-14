@@ -28,15 +28,17 @@ func genLoadDescription(t prometheus.ValueType, fqName string, help string, vari
 }
 
 type LoadCollector struct {
-	mu           sync.RWMutex
-	Metrics      map[string]float64
-	descriptions map[string][3]metric
+	mu                 sync.RWMutex
+	Metrics            map[string]float64
+	descriptions       map[string][3]metric
+	subscriptionErrors *prometheus.CounterVec
 }
 
-func NewLoadCollector(labels prometheus.Labels) *LoadCollector {
+func NewLoadCollector(labels prometheus.Labels, subErrors *prometheus.CounterVec) *LoadCollector {
 	return &LoadCollector{
-		mu:      sync.RWMutex{},
-		Metrics: make(map[string]float64, 32),
+		mu:                 sync.RWMutex{},
+		Metrics:            make(map[string]float64, 32),
+		subscriptionErrors: subErrors,
 		descriptions: map[string][3]metric{
 			"connections":       genLoadDescription(prometheus.GaugeValue, "mosquitto_connections", "The moving average of the number of connections opened to the broker", nil, labels),
 			"sockets":           genLoadDescription(prometheus.GaugeValue, "mosquitto_sockets", "The moving average of the number of socket connections opened to the broker", nil, labels),
@@ -75,7 +77,7 @@ func (collector *LoadCollector) Collect(ch chan<- prometheus.Metric) {
 func (collector *LoadCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/load/#", 0, collector.loadHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/load/#: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/load/#", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/load/#", token.Error().Error()).Inc()
 	}
 }
 

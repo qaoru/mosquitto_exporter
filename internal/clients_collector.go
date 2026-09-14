@@ -11,15 +11,17 @@ import (
 )
 
 type ClientsCollector struct {
-	mu           sync.RWMutex
-	Metrics      map[string]float64
-	descriptions map[string]metric
+	mu                 sync.RWMutex
+	Metrics            map[string]float64
+	descriptions       map[string]metric
+	subscriptionErrors *prometheus.CounterVec
 }
 
-func NewClientsCollector(labels prometheus.Labels) *ClientsCollector {
+func NewClientsCollector(labels prometheus.Labels, subErrors *prometheus.CounterVec) *ClientsCollector {
 	return &ClientsCollector{
-		mu:      sync.RWMutex{},
-		Metrics: make(map[string]float64, 8),
+		mu:                 sync.RWMutex{},
+		Metrics:            make(map[string]float64, 8),
+		subscriptionErrors: subErrors,
 		descriptions: map[string]metric{
 			"active": {
 				desc:      prometheus.NewDesc("mosquitto_active_clients_count", "Number of active clients", nil, labels),
@@ -70,7 +72,7 @@ func (collector *ClientsCollector) Collect(ch chan<- prometheus.Metric) {
 func (collector *ClientsCollector) Subscribe(client mqtt.Client) {
 	if token := client.Subscribe("$SYS/broker/clients/#", 0, collector.clientsHandler); token.Wait() && token.Error() != nil {
 		log.Printf("Failed to subscribe to $SYS/broker/clients/#: %v", token.Error())
-		SubscriptionErrors.WithLabelValues("$SYS/broker/clients/#", token.Error().Error()).Inc()
+		collector.subscriptionErrors.WithLabelValues("$SYS/broker/clients/#", token.Error().Error()).Inc()
 	}
 }
 

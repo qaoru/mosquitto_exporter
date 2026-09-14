@@ -11,7 +11,7 @@ import (
 
 func TestNewLoadCollector(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 
 	assert.NotNil(t, collector)
 	assert.NotNil(t, collector.Metrics)
@@ -21,7 +21,7 @@ func TestNewLoadCollector(t *testing.T) {
 
 func TestLoadCollector_Describe(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 
 	descriptions := make(chan *prometheus.Desc)
 	go func() {
@@ -40,7 +40,7 @@ func TestLoadCollector_Describe(t *testing.T) {
 
 func TestLoadCollector_Collect(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 
 	// Set some test values
 	collector.Metrics["connections_1min"] = 1.5
@@ -67,7 +67,7 @@ func TestLoadCollector_Collect(t *testing.T) {
 
 func TestLoadCollector_LoadHandler_Integration(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 
 	testCases := []struct {
 		topic         string
@@ -92,7 +92,7 @@ func TestLoadCollector_LoadHandler_Integration(t *testing.T) {
 
 func TestLoadCollector_Subscribe(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 	client := newMockClient()
 
 	collector.Subscribe(client)
@@ -103,19 +103,20 @@ func TestLoadCollector_Subscribe(t *testing.T) {
 
 func TestLoadCollector_Subscribe_Error(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	subErr := newTestSubscriptionErrors(t)
+	collector := NewLoadCollector(labels, subErr)
 	client := newMockClient().withSubscribeError(errors.New("boom"))
 
 	topic := "$SYS/broker/load/#"
-	before := testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+	before := testutil.ToFloat64(subErr.WithLabelValues(topic, "boom"))
 	collector.Subscribe(client)
-	after := testutil.ToFloat64(SubscriptionErrors.WithLabelValues(topic, "boom"))
+	after := testutil.ToFloat64(subErr.WithLabelValues(topic, "boom"))
 	assert.Equal(t, before+1, after)
 }
 
 func TestLoadCollector_LoadHandler_ParseError(t *testing.T) {
 	labels := prometheus.Labels{"broker": "test-broker"}
-	collector := NewLoadCollector(labels)
+	collector := NewLoadCollector(labels, newTestSubscriptionErrors(t))
 	collector.Metrics["connections_1min"] = 9.9
 
 	collector.loadHandler(nil, &mockMessage{payload: []byte("notanumber"), topic: "$SYS/broker/load/connections/1min"})

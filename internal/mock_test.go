@@ -2,10 +2,28 @@ package internal
 
 import (
 	"sync"
+	"testing"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+// newTestSubscriptionErrors returns a fresh, unregistered subscription-errors
+// counter for use in a single test. It is NOT registered on the default
+// registry, so tests stay isolated and can assert via testutil.ToFloat64
+// against this instance directly.
+func newTestSubscriptionErrors(tb testing.TB) *prometheus.CounterVec {
+	tb.Helper()
+	return prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name:        "mosquitto_subscription_errors_total",
+			Help:        "Total number of subscription errors",
+			ConstLabels: prometheus.Labels{"broker": "test-broker"},
+		},
+		[]string{"topic", "error"},
+	)
+}
 
 // mockToken implements mqtt.Token for testing. Wait() always reports the
 // operation as complete; Error() returns the configured error (nil by default
