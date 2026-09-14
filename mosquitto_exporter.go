@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -44,8 +45,17 @@ func main() {
 	kingpin.CommandLine.HelpFlag.Short('h')
 	kingpin.Version(fmt.Sprintf("%s (commit %s, built %s by %s)", version, commit, date, builtBy))
 	kingpin.Parse()
+	// Use the raw broker URL (which may carry credentials) for the actual
+	// MQTT connection, but a sanitized form (userinfo stripped) for the
+	// `broker` const label and log lines, so credentials are never exposed
+	// via /metrics or logs.
+	brokerLabel := *broker
+	if u, err := url.Parse(*broker); err == nil {
+		u.User = nil
+		brokerLabel = u.String()
+	}
 	mqttOptions := mqtt.NewClientOptions().AddBroker(*broker)
-	constLabels["broker"] = *broker
+	constLabels["broker"] = brokerLabel
 	mqttOptions.SetClientID(*clientID)
 	mqttOptions.SetAutoReconnect(true)
 	mqttOptions.SetConnectRetry(true)
@@ -111,7 +121,7 @@ func main() {
 	})
 
 	client := mqtt.NewClient(mqttOptions)
-	log.Printf("Connecting to broker %s", *broker)
+	log.Printf("Connecting to broker %s", brokerLabel)
 	client.Connect() // non-blocking: connection is retried in the background
 
 	defer client.Disconnect(250)

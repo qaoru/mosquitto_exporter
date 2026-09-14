@@ -137,7 +137,12 @@ The load collector exposes moving averages over 1‑minute, 5‑minute and 15‑
 | `mosquitto_publish_sent_load1`<br>`mosquitto_publish_sent_load5`<br>`mosquitto_publish_sent_load15` | Gauge | Moving average of publish messages sent per second. |
 | `mosquitto_publish_dropped_load1`<br>`mosquitto_publish_dropped_load5`<br>`mosquitto_publish_dropped_load15` | Gauge | Moving average of publish messages dropped per second. |
 
-All metrics include a `broker` label containing the connection string.
+All metrics include a `broker` label identifying the broker. For safety, any
+credentials embedded in the broker URL (e.g. `tcp://user:pass@host:1883`)
+are stripped before being used as the label value, so the label contains only
+`scheme://host:port`. Prefer the `--mqtt.username` / `--mqtt.password` flags
+(or `MQTT_USERNAME` / `MQTT_PASSWORD` env vars) over embedding credentials in
+the URL.
 
 ## Health endpoint
 
