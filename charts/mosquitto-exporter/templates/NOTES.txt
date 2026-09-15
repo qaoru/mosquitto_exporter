@@ -1,0 +1,49 @@
+{{- define "mosquitto_exporter.scrapeUrl" -}}
+http://{{ include "mosquitto_exporter.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}{{ .Values.web.telemetryPath }}
+{{- end }}
+
+mosquitto_exporter has been deployed as a Deployment in namespace {{ .Release.Namespace | quote }}.
+
+It connects to the Mosquitto broker at {{ .Values.mqtt.broker | quote }} and serves
+Prometheus metrics on the {{ .Values.service.type }} Service
+{{ include "mosquitto_exporter.fullname" . }} (port {{ .Values.service.port }}).
+
+Scrape it from inside the cluster at:
+
+  {{ include "mosquitto_exporter.scrapeUrl" . | trim }}
+
+Health endpoint (liveness/readiness):
+
+  http://{{ include "mosquitto_exporter.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/healthz
+
+{{- if .Values.serviceMonitor.enabled }}
+
+A Prometheus Operator ServiceMonitor has been created. Make sure your Prometheus
+instance selects it via the labels:
+
+{{- with .Values.serviceMonitor.labels }}
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- else if .Values.prometheus.scrapeAnnotations }}
+
+Prometheus scrape annotations have been added to the Service. Ensure your
+Prometheus is configured to discover ServiceMonitor-less targets via
+`prometheus.io/scrape` annotations.
+{{- else }}
+
+No Prometheus integration is enabled. To scrape the exporter, either:
+  - set `serviceMonitor.enabled: true` (Prometheus Operator), or
+  - set `prometheus.scrapeAnnotations: true` (annotation-based discovery).
+{{- end }}
+
+{{- if .Values.networkPolicy.enabled }}
+
+A {{ .Values.networkPolicy.flavor }} NetworkPolicy is enforcing ingress/egress.
+Verify the default egress rules allow your broker (port 1883 by default) and the
+configured scraper can reach the metrics port ({{ .Values.service.port }}).
+{{- end }}
+
+Verify the pod is running and connected:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "mosquitto_exporter.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  curl -s http://localhost:{{ .Values.service.port }}/metrics | grep '^mosquitto_up'

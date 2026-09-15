@@ -1,0 +1,34 @@
+---
+apiVersion: v2
+type: application
+name: mosquitto-exporter
+description: Prometheus exporter for the Mosquitto MQTT broker. Subscribes to the Mosquitto `$SYS` topic tree and exposes broker statistics as Prometheus metrics.
+version: 0.1.0
+appVersion: 1.0.1
+home: https://github.com/qaoru/mosquitto_exporter
+sources:
+  - https://github.com/qaoru/mosquitto_exporter
+maintainers:
+  - name: qaoru
+    email: paul@qaoru.fr
+keywords:
+  - mosquitto
+  - mqtt
+  - prometheus
+  - exporter
+  - monitoring
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial Helm chart for mosquitto_exporter (Deployment, Service, optional ServiceMonitor + scrape annotations, optional Kubernetes/Cilium NetworkPolicy, optional PDB and MQTT credentials Secret).
+  artifacthub.io/links: |
+    - name: Source repository
+      url: https://github.com/qaoru/mosquitto_exporter
+    - name: Helm chart (OCI)
+      url: ghcr.io/qaoru/helm-charts/mosquitto-exporter
+  artifacthub.io/maintainers: |
+    - name: qaoru
+      email: paul@qaoru.fr
+  artifacthub.io/images: |
+    - name: mosquitto_exporter
+      image: ghcr.io/qaoru/mosquitto_exporter:1.0.1

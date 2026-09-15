@@ -37,8 +37,13 @@ Dockerfile.release            # distroless image copying goreleaser-built binari
 .goreleaser.yml               # v2 config: cross-build + dockers_v2 + checksums
 .github/workflows/            # go.yml (CI), release.yml (goreleaser), docker-publish.yml
 .github/dependabot.yml        # gomod + github-actions, weekly
-grafana-dashboard.json        # bundled dashboard (not referenced from README)
+grafana-dashboard.json            # bundled dashboard (not referenced from README)
 README.md                     # user-facing docs (flags, metrics, examples)
+charts/mosquitto-exporter/    # Helm chart (Chart.yaml, values.yaml + schema, README.md.gotmpl,
+                              #   templates: deployment/service/serviceaccount/servicemonitor/
+                              #   secret/poddisruptionbudget/networkpolicy/ciliumnetworkpolicy)
+.github/workflows/chart.yml        # chart CI: helm lint + kubeconform validation (quality gate)
+.github/workflows/chart-release.yml  # on main push / tag: lint + package + helm push OCI + cosign + GitHub Release
 coverage.out                  # gitignored build artifact
 ```
 
@@ -121,6 +126,84 @@ non-blocking and its token is currently ignored.
 
 `--version` prints `version (commit ..., built ... by ...)`; the `version`,
 `commit`, `date`, `builtBy` vars are injected by goreleaser ldflags.
+
+## Helm chart (`charts/mosquitto-exporter`)
+
+The Helm chart is **co-located and self-contained in this repo**: its source
+lives under `charts/mosquitto-exporter/` (next to the binary/Dockerfile) and it
+is **published from this same repo** as a cosign-signed OCI artifact to the
+shared `qaoru/helm-charts` GHCR namespace (same path as the charts the
+`qaoru/helm-charts` collection manages — `unifi`, `open-terminal`):
+`ghcr.io/qaoru/helm-charts/mosquitto-exporter:<version>`. Only the OCI package
+lives in that namespace; the chart source, release tag, and GitHub Release stay
+in THIS repo and never touch the `qaoru/helm-charts` git repo.
+
+There is **no classic HTTP Helm repository and no Artifact Hub entry** for this
+chart (that unified-collection model would require the `qaoru/helm-charts`
+release pipeline). Consumers install it via OCI:
+`helm install ... oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter`.
+
+Workflows:
+- `.github/workflows/chart.yml` — **quality gate** (helm lint + kubeconform)
+  on PRs and pushes; `contents: read` only; never publishes.
+- `.github/workflows/chart-release.yml` — **publisher**. On push to `main`, it
+  detects a `Chart.yaml` `version`/`appVersion` change vs the previous commit;
+  when only `appVersion` changed it auto-bumps the chart patch version (so image
+  updates cut a release), regenerates `README.md` with helm-docs, commits, pushes
+  a `mosquitto-exporter-<version>` tag, then lints + packages + `helm push`
+  (OCI) + cosign-signs (keyless OIDC) + creates a GitHub Release with the
+  `.tgz` attached. Also supports manual `mosquitto-exporter-<semver>` tag pushes
+  and `workflow_dispatch` recovery.
+
+Auth: everything uses this repo's built-in `GITHUB_TOKEN` (`contents: write`
+for git ops, `packages: write` for the OCI push, `id-token: write` for cosign
+keyless signing). `ghcr.io/qaoru/helm-charts/mosquitto-exporter` is just a GHCR
+package name (a flat string with a slash, like the collection's
+`helm-charts/open-terminal`); the `GITHUB_TOKEN` creates it on first push and
+GHCR links it to THIS repo. No PAT, no per-package grant. Do NOT manually
+re-link the package to `qaoru/helm-charts` — that would revoke this repo's
+write access and force a PAT/grant.
+
+Chart release tags use the `mosquitto-exporter-<version>` prefix so they never
+collide with the exporter binary's `v*` tags (goreleaser / `release.yml`). A
+`<chart>-<version>` tag pushed by the workflow via `GITHUB_TOKEN` does not
+re-trigger the workflow, so publish runs in the same job as the tag push.
+
+`appVersion` is owned by THIS repo (the exporter image is released here by
+goreleaser): bump `appVersion` + the `artifacthub.io/images` annotation in
+`Chart.yaml` and merge to main; `chart-release.yml` auto-bumps the chart patch
+version and releases.
+
+Chart conventions (follow the `qaoru/helm-charts` charts `unifi` / `open-terminal`):
+- Chart name uses hyphens (`mosquitto-exporter`) even though the Go module /
+  repo uses an underscore — Kubernetes resource names cannot contain `_`.
+- `Chart.yaml` carries Artifact Hub annotations (`changes`, `links`,
+  `maintainers`, `images`); `appVersion` tracks the exporter image tag and is
+  kept in sync with goreleaser releases.
+- `values.yaml` is documented with `# --` comments consumed by `helm-docs`;
+  `README.md` is generated from `README.md.gotmpl`. Regenerate after editing
+  values with `helm-docs charts/mosquitto-exporter/` (`chart-release.yml`
+  regenerates it on release too).
+- `values.schema.json` validates inputs (`additionalProperties: false` where
+  practical, enums for `image.pullPolicy`, `service.type`,
+  `networkPolicy.flavor`).
+- Network isolation is opt-in via `networkPolicy.enabled` + `networkPolicy.flavor`
+  (`kubernetes` → `NetworkPolicy`, `cilium` → `CiliumNetworkPolicy`); the two
+  templates render native rules verbatim from `networkPolicy.{ingress,egress}`
+  and `networkPolicy.cilium.{ingress,egress}` respectively. Defaults assume an
+  in-cluster broker on port 1883.
+- Prometheus scraping is opt-in two ways: `serviceMonitor.enabled` (Prometheus
+  Operator) and `prometheus.scrapeAnnotations` (annotation-based). Both can be
+  on simultaneously.
+- The chart-managed MQTT `Secret` is created **only** when inline
+  `mqtt.auth.username`/`password` are set and no `mqtt.auth.existingSecret` is
+  referenced. Do not render a Secret with empty credentials.
+- The default pod/container security contexts comply with PSS `restricted`
+  (UID 65532, dropped caps, `readOnlyRootFilesystem`, RuntimeDefault seccomp).
+
+When adding chart templates, add a corresponding render case to
+`.github/workflows/chart.yml`'s "Render and validate manifests" matrix and keep
+`values.schema.json` in sync.
 
 ## Release process
 

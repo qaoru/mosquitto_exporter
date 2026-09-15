@@ -26,3 +26,7 @@ go.work.sum
 
 mosquitto_exporter
 dist/**
+
+# Helm chart build artifacts
+**/charts/*.tgz
+chart-packages/**

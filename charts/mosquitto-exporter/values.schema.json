@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "mosquitto_exporter values",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": ["string", "null"] },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" }
+        },
+        "required": ["name"]
+      }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "revisionHistoryLimit": { "type": "integer", "minimum": 0 },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" },
+        "automount": { "type": "boolean" }
+      }
+    },
+    "podSecurityContext": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "securityContext": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "mqtt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "broker": { "type": "string" },
+        "clientId": { "type": "string" },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": { "type": "string" },
+            "username": { "type": "string" },
+            "password": { "type": "string" },
+            "usernameKey": { "type": "string" },
+            "passwordKey": { "type": "string" }
+          }
+        }
+      }
+    },
+    "collectors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clients": { "type": "boolean" },
+        "messages": { "type": "boolean" },
+        "load": { "type": "boolean" }
+      }
+    },
+    "web": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "listenAddress": { "type": "string" },
+        "telemetryPath": { "type": "string" }
+      }
+    },
+    "extraArgs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "env": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+        },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "targetPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "annotations": { "type": "object" }
+      }
+    },
+    "prometheus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scrapeAnnotations": { "type": "boolean" }
+      }
+    },
+    "serviceMonitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "labels": { "type": "object" },
+        "annotations": { "type": "object" },
+        "interval": { "type": "string" },
+        "scrapeTimeout": { "type": "string" },
+        "honorLabels": { "type": "boolean" },
+        "metricRelabelings": { "type": "array", "items": { "type": "object" } },
+        "relabelings": { "type": "array", "items": { "type": "object" } },
+        "namespaceSelector": { "type": "object" }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "flavor": {
+          "type": "string",
+          "enum": ["kubernetes", "cilium"]
+        },
+        "ingress": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "egress": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "cilium": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "ingress": { "type": "array", "items": { "type": "object" } },
+            "egress": { "type": "array", "items": { "type": "object" } }
+          }
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "apiVersion": { "type": "string" },
+        "minAvailable": {
+          "type": ["string", "integer", "null"]
+        },
+        "maxUnavailable": {
+          "type": ["string", "integer", "null"]
+        }
+      }
+    },
+    "livenessProbe": { "type": "object", "additionalProperties": true },
+    "readinessProbe": { "type": "object", "additionalProperties": true },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "requests": { "type": "object" },
+        "limits": { "type": "object" }
+      }
+    },
+    "podLabels": { "type": "object" },
+    "podAnnotations": { "type": "object" },
+    "deploymentAnnotations": { "type": "object" },
+    "nodeSelector": { "type": "object" },
+    "affinity": { "type": "object" },
+    "tolerations": { "type": "array", "items": { "type": "object" } },
+    "topologySpreadConstraints": { "type": "array", "items": { "type": "object" } },
+    "volumes": { "type": "array", "items": { "type": "object" } },
+    "volumeMounts": { "type": "array", "items": { "type": "object" } },
+    "initContainers": { "type": "array", "items": { "type": "object" } }
+  }
+}

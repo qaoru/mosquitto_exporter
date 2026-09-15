@@ -1,0 +1,82 @@
+# {{ template "chart.name" . }}
+
+![Version: {{ .Version }}](https://img.shields.io/badge/Version-{{ .Version }}-informational?style=flat-square)
+![Type: {{ .Type }}](https://img.shields.io/badge/Type-{{ .Type }}-informational?style=flat-square)
+![AppVersion: {{ .AppVersion }}](https://img.shields.io/badge/AppVersion-{{ .AppVersion }}-informational?style=flat-square)
+
+{{ template "chart.description" . }}
+
+Deploys the [mosquitto_exporter](https://github.com/qaoru/mosquitto_exporter) container as a `Deployment` with a `Service` exposing the Prometheus metrics endpoint. Optional resources: `ServiceAccount`, `Secret` (MQTT credentials), `ServiceMonitor` (Prometheus Operator), `PodDisruptionBudget`, and an opt-in `NetworkPolicy` / `CiliumNetworkPolicy`.
+
+## Prerequisites
+
+- Kubernetes >= 1.23
+- Helm >= 3.0
+- A reachable Mosquitto broker (in-cluster or external) on MQTTv3 / MQTTv3.1.1
+- (Optional) Prometheus Operator CRDs for `ServiceMonitor`
+- (Optional) Cilium when using `networkPolicy.flavor: cilium`
+
+## Installation
+
+### OCI (GitHub Container Registry)
+
+```bash
+helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter \
+  --version {{ .Version }} \
+  --set mqtt.broker=tcp://mosquitto:1883 \
+  --set collectors.clients=true --set collectors.messages=true --set collectors.load=true
+```
+
+### With a values file
+
+```bash
+helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter --version {{ .Version }} -f values.yaml
+```
+
+### MQTT credentials
+
+Provide credentials either inline (a Secret is created for you) or via an existing Secret:
+
+```bash
+kubectl create secret generic mosquitto-exporter-mqtt \
+  --from-literal=username=<user> --from-literal=password=<pass>
+```
+
+then set `mqtt.auth.existingSecret=mosquitto-exporter-mqtt`.
+
+## Configuration
+
+### Broker & collectors
+
+The exporter connects to `mqtt.broker` (default `tcp://mosquitto:1883`) and
+subscribes to the `$SYS` topic tree. Opt-in collectors (`clients`, `messages`,
+`load`) mirror the exporter's `--collector.*` flags. If the broker is
+unreachable the exporter keeps serving `/metrics` with `mosquitto_up=0`
+(graceful degradation).
+
+### Prometheus
+
+Two opt-in scrape mechanisms (usable together):
+
+- **ServiceMonitor** (`serviceMonitor.enabled: true`) for Prometheus Operator.
+  Set `serviceMonitor.labels` so your Prometheus selects it.
+- **Scrape annotations** (`prometheus.scrapeAnnotations: true`) for
+  annotation-based discovery without an Operator.
+
+### Network policies
+
+Opt in with `networkPolicy.enabled: true` and choose a `flavor`:
+
+- `kubernetes` — standard `NetworkPolicy` (rules from `networkPolicy.ingress` /
+  `networkPolicy.egress`).
+- `cilium` — `CiliumNetworkPolicy` (rules from `networkPolicy.cilium.ingress` /
+  `networkPolicy.cilium.egress`).
+
+Defaults assume an **in-cluster broker on port 1883** and allow the metrics port
+from any in-cluster source. Tighten the egress peers to match your broker and
+the ingress peers to match your Prometheus. For an external broker use an
+`ipBlock` (Kubernetes) or `toEntities: [world]` / `toFQDNs` (Cilium).
+
+## Values
+
+{{ template "chart.valuesTable" . }}

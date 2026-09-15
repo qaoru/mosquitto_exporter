@@ -1,0 +1,146 @@
+# Lint and validate the mosquitto-exporter Helm chart on every change.
+#
+# This workflow is the chart quality gate for the mosquitto_exporter repo. It
+# runs on every push to main/develop and on PRs, and:
+#   1. lints the chart (`helm lint` with the chart schema),
+#   2. renders templates for several value permutations,
+#   3. validates the rendered manifests against the Kubernetes schema with
+#      kubeconform (catches malformed resources before they hit a cluster).
+#
+# Publishing is handled by a separate workflow, chart-release.yml, which
+# publishes the chart as a cosign-signed OCI artifact to the shared
+# qaoru/helm-charts GHCR namespace (ghcr.io/qaoru/helm-charts/mosquitto-exporter).
+# This file is the quality gate only; see charts/mosquitto-exporter/README.md
+# for the install path.
+
+name: Chart CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+    paths:
+      - "charts/**"
+      - ".github/workflows/chart.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "charts/**"
+      - ".github/workflows/chart.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint & validate chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v4.3.0
+
+      - name: Install kubeconform
+        env:
+          KUBECONFORM_VERSION: v0.7.0
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
+          kubeconform --version
+
+      - name: helm lint (defaults)
+        run: helm lint charts/mosquitto-exporter/
+
+      - name: helm lint (all features)
+        run: |
+          cat > /tmp/values-full.yaml <<'EOF'
+          collectors:
+            clients: true
+            messages: true
+            load: true
+          serviceMonitor:
+            enabled: true
+            labels:
+              release: kube-prometheus-stack
+          prometheus:
+            scrapeAnnotations: true
+          networkPolicy:
+            enabled: true
+            flavor: cilium
+          mqtt:
+            auth:
+              username: user
+              password: pass
+          podDisruptionBudget:
+            enabled: true
+          EOF
+          helm lint charts/mosquitto-exporter/ -f /tmp/values-full.yaml
+
+      - name: Render and validate manifests
+        # Render the chart for each flavor permutation and feed every rendered
+        # manifest to kubeconform. kubeconform skips the ServiceMonitor and
+        # CiliumNetworkPolicy CRDs (not in the bundled Kubernetes schema) via
+        # -ignore-missing-schemas so the standard resources are still checked.
+        run: |
+          set -euo pipefail
+          CHART=charts/mosquitto-exporter
+          mkdir -p /tmp/rendered
+
+          declare -a CASES=(
+            "defaults"
+            "collectors=on"
+            "servicemonitor=on"
+            "scrape-annotations=on"
+            "np=kubernetes"
+            "np=cilium"
+            "pdb=on"
+            "creds=inline"
+            "creds=existingSecret"
+            "all=on"
+          )
+
+          render() {
+            local name="$1"; shift
+            helm template "mo" "$CHART" "$@" > "/tmp/rendered/${name}.yaml"
+          }
+
+          render defaults
+          render collectors=on --set collectors.clients=true --set collectors.messages=true --set collectors.load=true
+          render servicemonitor=on --set serviceMonitor.enabled=true --set serviceMonitor.labels.release=kps
+          render scrape-annotations=on --set prometheus.scrapeAnnotations=true
+          render np=kubernetes --set networkPolicy.enabled=true --set networkPolicy.flavor=kubernetes
+          render np=cilium --set networkPolicy.enabled=true --set networkPolicy.flavor=cilium
+          render pdb=on --set podDisruptionBudget.enabled=true
+          render creds=inline --set mqtt.auth.username=u --set mqtt.auth.password=p
+          render creds=existingSecret --set mqtt.auth.existingSecret=my-secret
+          render all=on \
+            --set collectors.clients=true --set collectors.messages=true --set collectors.load=true \
+            --set serviceMonitor.enabled=true --set prometheus.scrapeAnnotations=true \
+            --set networkPolicy.enabled=true --set networkPolicy.flavor=cilium \
+            --set podDisruptionBudget.enabled=true \
+            --set mqtt.auth.username=u --set mqtt.auth.password=p
+
+          # Strict-ish validation: the chart must not emit a Secret when no
+          # credentials are configured (graceful default), and must emit one
+          # when inline creds are provided.
+          ! grep -q '^kind: Secret$' /tmp/rendered/defaults.yaml
+          grep -q '^kind: Secret$' /tmp/rendered/creds=inline.yaml
+
+          for f in /tmp/rendered/*.yaml; do
+            echo "::group::kubeconform $(basename "$f")"
+            kubeconform \
+              -strict \
+              -ignore-missing-schemas \
+              -kubernetes-version master \
+              -summary "$f"
+            echo "::endgroup::"
+          done
