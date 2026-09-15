@@ -6,7 +6,7 @@
 
 {{ template "chart.description" . }}
 
-Deploys the [mosquitto_exporter](https://github.com/qaoru/mosquitto_exporter) container as a `Deployment` with a `Service` exposing the Prometheus metrics endpoint. Optional resources: `ServiceAccount`, `Secret` (MQTT credentials), `ServiceMonitor` (Prometheus Operator), `PodDisruptionBudget`, and an opt-in `NetworkPolicy` / `CiliumNetworkPolicy`.
+Deploys the [mosquitto_exporter](https://github.com/qaoru/mosquitto_exporter) container as a `Deployment` with a `Service` exposing the Prometheus metrics endpoint. Optional resources: `ServiceAccount`, `Secret` (MQTT credentials), `ServiceMonitor` (Prometheus Operator), `PodDisruptionBudget`, an opt-in `NetworkPolicy` / `CiliumNetworkPolicy`, and a `ConfigMap` shipping the bundled Grafana dashboard.
 
 ## Prerequisites
 
@@ -76,6 +76,18 @@ Defaults assume an **in-cluster broker on port 1883** and allow the metrics port
 from any in-cluster source. Tighten the egress peers to match your broker and
 the ingress peers to match your Prometheus. For an external broker use an
 `ipBlock` (Kubernetes) or `toEntities: [world]` / `toFQDNs` (Cilium).
+
+### Grafana dashboard
+
+Opt in with `grafana.dashboard.enabled: true` to ship the bundled
+`mosquitto_exporter` dashboard as a `ConfigMap`. The ConfigMap is labeled
+`grafana_dashboard: "1"` by default so the [Grafana sidecar](https://grafana.github.io/helm-charts/grafana)
+discovers and imports it automatically; set `grafana.dashboard.labels` to match
+your sidecar's selector (e.g. `release: kube-prometheus-stack`) and
+`grafana.dashboard.annotations` for tooling that selects by annotation.
+
+The dashboard JSON is vendored under `dashboard/mosquitto.json` inside the
+chart and kept in sync with the repository-root `grafana-dashboard.json`.
 
 ## Values
 

@@ -146,6 +146,23 @@ serviceMonitor:
   # -- Namespace selector for the ServiceMonitor (empty = same namespace).
   namespaceSelector: {}
 
+# -- Grafana dashboard integration. The chart vendors the bundled
+# `mosquitto_exporter` dashboard under `dashboard/mosquitto.json` and can ship
+# it as a ConfigMap discoverable by the Grafana sidecar (or any tool that
+# selects ConfigMaps by label).
+grafana:
+  dashboard:
+    # -- Deploy a ConfigMap containing the bundled Grafana dashboard.
+    enabled: false
+    # -- ConfigMap name. Defaults to `<release>-dashboard`.
+    configMapName: ""
+    # -- Extra labels added to the ConfigMap. The chart already sets
+    # `grafana_dashboard: "1"` for sidecar discovery; extend or override here to
+    # match your Grafana's selector (e.g. `release: kube-prometheus-stack`).
+    labels: {}
+    # -- Annotations added to the ConfigMap.
+    annotations: {}
+
 # -- Network policy for ingress/egress isolation. Disabled by default; opt in
 # with `enabled: true`. Two mutually-exclusive flavors are supported via
 # `flavor`: `kubernetes` (standard NetworkPolicy) or `cilium`

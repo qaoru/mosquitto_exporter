@@ -1,12 +1,12 @@
 # mosquitto-exporter
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square)
 ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
 ![AppVersion: 1.0.1](https://img.shields.io/badge/AppVersion-1.0.1-informational?style=flat-square)
 
 Prometheus exporter for the Mosquitto MQTT broker. Subscribes to the Mosquitto `$SYS` topic tree and exposes broker statistics as Prometheus metrics.
 
-Deploys the [mosquitto_exporter](https://github.com/qaoru/mosquitto_exporter) container as a `Deployment` with a `Service` exposing the Prometheus metrics endpoint. Optional resources: `ServiceAccount`, `Secret` (MQTT credentials), `ServiceMonitor` (Prometheus Operator), `PodDisruptionBudget`, and an opt-in `NetworkPolicy` / `CiliumNetworkPolicy`.
+Deploys the [mosquitto_exporter](https://github.com/qaoru/mosquitto_exporter) container as a `Deployment` with a `Service` exposing the Prometheus metrics endpoint. Optional resources: `ServiceAccount`, `Secret` (MQTT credentials), `ServiceMonitor` (Prometheus Operator), `PodDisruptionBudget`, an opt-in `NetworkPolicy` / `CiliumNetworkPolicy`, and a `ConfigMap` shipping the bundled Grafana dashboard.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ Deploys the [mosquitto_exporter](https://github.com/qaoru/mosquitto_exporter) co
 
 ```bash
 helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set mqtt.broker=tcp://mosquitto:1883 \
   --set collectors.clients=true --set collectors.messages=true --set collectors.load=true
 ```
@@ -30,7 +30,7 @@ helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-export
 ### With a values file
 
 ```bash
-helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter --version 0.1.0 -f values.yaml
+helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter --version 0.2.0 -f values.yaml
 ```
 
 ### MQTT credentials
@@ -77,6 +77,18 @@ from any in-cluster source. Tighten the egress peers to match your broker and
 the ingress peers to match your Prometheus. For an external broker use an
 `ipBlock` (Kubernetes) or `toEntities: [world]` / `toFQDNs` (Cilium).
 
+### Grafana dashboard
+
+Opt in with `grafana.dashboard.enabled: true` to ship the bundled
+`mosquitto_exporter` dashboard as a `ConfigMap`. The ConfigMap is labeled
+`grafana_dashboard: "1"` by default so the [Grafana sidecar](https://grafana.github.io/helm-charts/grafana)
+discovers and imports it automatically; set `grafana.dashboard.labels` to match
+your sidecar's selector (e.g. `release: kube-prometheus-stack`) and
+`grafana.dashboard.annotations` for tooling that selects by annotation.
+
+The dashboard JSON is vendored under `dashboard/mosquitto.json` inside the
+chart and kept in sync with the repository-root `grafana-dashboard.json`.
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -90,6 +102,11 @@ the ingress peers to match your Prometheus. For an external broker use an
 | env | list | `[]` | Extra environment variables (list of `{name, value}` / `{name, valueFrom}`). |
 | extraArgs | list | `[]` | Extra CLI arguments appended after the generated flags (e.g. `--log.level=debug`). Each entry is a single arg. |
 | fullnameOverride | string | `""` | Override the fully qualified resource name. |
+| grafana | object | `{"dashboard":{"annotations":{},"configMapName":"","enabled":false,"labels":{}}}` | Grafana dashboard integration. The chart vendors the bundled `mosquitto_exporter` dashboard under `dashboard/mosquitto.json` and can ship it as a ConfigMap discoverable by the Grafana sidecar (or any tool that selects ConfigMaps by label). |
+| grafana.dashboard.annotations | object | `{}` | Annotations added to the ConfigMap. |
+| grafana.dashboard.configMapName | string | `""` | ConfigMap name. Defaults to `<release>-dashboard`. |
+| grafana.dashboard.enabled | bool | `false` | Deploy a ConfigMap containing the bundled Grafana dashboard. |
+| grafana.dashboard.labels | object | `{}` | Extra labels added to the ConfigMap. The chart already sets `grafana_dashboard: "1"` for sidecar discovery; extend or override here to match your Grafana's selector (e.g. `release: kube-prometheus-stack`). |
 | image | object | `{"pullPolicy":"IfNotPresent","repository":"ghcr.io/qaoru/mosquitto_exporter","tag":""}` | Image configuration. |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
 | image.repository | string | `"ghcr.io/qaoru/mosquitto_exporter"` | Container image repository. |
