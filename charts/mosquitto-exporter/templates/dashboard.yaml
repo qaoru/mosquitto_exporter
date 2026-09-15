@@ -1,0 +1,22 @@
+{{- if .Values.grafana.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mosquitto_exporter.dashboardConfigMapName" . }}
+  labels:
+    {{- include "mosquitto_exporter.labels" . | nindent 4 }}
+    # Default label consumed by the Grafana sidecar (`grafana_dashboard: "1"`).
+    # Override or extend via `grafana.dashboard.labels` to match your discovery
+    # mechanism (sidecar label config, kube-prometheus-stack, etc.).
+    grafana_dashboard: "1"
+    {{- with .Values.grafana.dashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.grafana.dashboard.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  mosquitto-exporter.json: |-
+{{ .Files.Get "dashboard/mosquitto.json" | indent 4 }}
+{{- end }}

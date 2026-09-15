@@ -3,7 +3,7 @@ apiVersion: v2
 type: application
 name: mosquitto-exporter
 description: Prometheus exporter for the Mosquitto MQTT broker. Subscribes to the Mosquitto `$SYS` topic tree and exposes broker statistics as Prometheus metrics.
-version: 0.1.0
+version: 0.2.0
 appVersion: 1.0.1
 home: https://github.com/qaoru/mosquitto_exporter
 sources:
@@ -19,6 +19,8 @@ keywords:
   - monitoring
 annotations:
   artifacthub.io/changes: |
+    - kind: added
+      description: Optional Grafana dashboard ConfigMap (`grafana.dashboard.enabled`) shipping the bundled `mosquitto_exporter` dashboard, discoverable by the Grafana sidecar via the `grafana_dashboard: "1"` label.
     - kind: added
       description: Initial Helm chart for mosquitto_exporter (Deployment, Service, optional ServiceMonitor + scrape annotations, optional Kubernetes/Cilium NetworkPolicy, optional PDB and MQTT credentials Secret).
   artifacthub.io/links: |

@@ -81,6 +81,11 @@ jobs:
               password: pass
           podDisruptionBudget:
             enabled: true
+          grafana:
+            dashboard:
+              enabled: true
+              labels:
+                release: kube-prometheus-stack
           EOF
           helm lint charts/mosquitto-exporter/ -f /tmp/values-full.yaml
 
@@ -104,6 +109,7 @@ jobs:
             "pdb=on"
             "creds=inline"
             "creds=existingSecret"
+            "grafana=on"
             "all=on"
           )
 
@@ -121,18 +127,24 @@ jobs:
           render pdb=on --set podDisruptionBudget.enabled=true
           render creds=inline --set mqtt.auth.username=u --set mqtt.auth.password=p
           render creds=existingSecret --set mqtt.auth.existingSecret=my-secret
+          render grafana=on --set grafana.dashboard.enabled=true --set grafana.dashboard.labels.release=kps
           render all=on \
             --set collectors.clients=true --set collectors.messages=true --set collectors.load=true \
             --set serviceMonitor.enabled=true --set prometheus.scrapeAnnotations=true \
             --set networkPolicy.enabled=true --set networkPolicy.flavor=cilium \
             --set podDisruptionBudget.enabled=true \
-            --set mqtt.auth.username=u --set mqtt.auth.password=p
+            --set mqtt.auth.username=u --set mqtt.auth.password=p \
+            --set grafana.dashboard.enabled=true
 
           # Strict-ish validation: the chart must not emit a Secret when no
           # credentials are configured (graceful default), and must emit one
           # when inline creds are provided.
           ! grep -q '^kind: Secret$' /tmp/rendered/defaults.yaml
           grep -q '^kind: Secret$' /tmp/rendered/creds=inline.yaml
+          # The dashboard ConfigMap is opt-in: absent by default, present when enabled.
+          ! grep -q '^kind: ConfigMap$' /tmp/rendered/defaults.yaml
+          grep -q '^kind: ConfigMap$' /tmp/rendered/grafana=on.yaml
+          grep -q 'grafana_dashboard: "1"' /tmp/rendered/grafana=on.yaml
 
           for f in /tmp/rendered/*.yaml; do
             echo "::group::kubeconform $(basename "$f")"

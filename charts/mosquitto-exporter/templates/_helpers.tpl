@@ -76,6 +76,13 @@ The MQTT credentials Secret name. Uses an existing Secret when
 {{- end }}
 
 {{/*
+The Grafana dashboard ConfigMap name. Defaults to `<fullname>-dashboard`.
+*/}}
+{{- define "mosquitto_exporter.dashboardConfigMapName" -}}
+{{- default (printf "%s-dashboard" (include "mosquitto_exporter.fullname" .)) .Values.grafana.dashboard.configMapName }}
+{{- end }}
+
+{{/*
 The exporter container args derived from values (broker, client id, listen
 address, telemetry path, opt-in collectors, and extra args).
 */}}
