@@ -86,8 +86,10 @@ discovers and imports it automatically; set `grafana.dashboard.labels` to match
 your sidecar's selector (e.g. `release: kube-prometheus-stack`) and
 `grafana.dashboard.annotations` for tooling that selects by annotation.
 
-The dashboard JSON is vendored under `dashboard/mosquitto.json` inside the
-chart and kept in sync with the repository-root `grafana-dashboard.json`.
+The repository-root `grafana-dashboard.json` is the canonical dashboard; the
+chart's `dashboard/mosquitto.json` is regenerated from it by CI (`chart.yml`
+and `chart-release.yml`) before linting and packaging, so editing the root file
+is all that is needed to update the shipped dashboard.
 
 ## Values
 
