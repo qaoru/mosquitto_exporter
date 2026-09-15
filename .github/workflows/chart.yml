@@ -41,7 +41,7 @@ jobs:
     name: Lint & validate chart
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The chart vendors the dashboard under charts/mosquitto-exporter/dashboard/
       # mosquitto.json; the repo-root grafana-dashboard.json is the canonical
