@@ -55,7 +55,6 @@ jobs:
             "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
           tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
           sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
-          kubeconform --version
 
       - name: helm lint (defaults)
         run: helm lint charts/mosquitto-exporter/
