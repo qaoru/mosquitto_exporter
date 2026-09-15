@@ -55,6 +55,31 @@ go build
 ./mosquitto_exporter --help
 ```
 
+### Helm
+
+A Helm chart lives under [`charts/mosquitto-exporter`](./charts/mosquitto-exporter).
+It deploys the exporter as a `Deployment` with a `Service`, an optional
+`ServiceAccount`, an optional MQTT-credentials `Secret`, an opt-in Prometheus
+Operator `ServiceMonitor` (and/or `prometheus.io/scrape` annotations), an opt-in
+`PodDisruptionBudget`, and an opt-in `NetworkPolicy` / `CiliumNetworkPolicy`.
+
+The chart is published as a cosign-signed OCI artifact to this repo's own GHCR
+namespace. Install it directly:
+
+```sh
+helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter \
+    --set mqtt.broker=tcp://mosquitto:1883 \
+    --set collectors.clients=true --set collectors.messages=true --set collectors.load=true
+```
+
+See the [chart README](./charts/mosquitto-exporter/README.md) for the full
+values reference. To develop the chart locally:
+
+```sh
+helm lint charts/mosquitto-exporter/
+helm template mosquitto-exporter ./charts/mosquitto-exporter
+```
+
 ## Configuration
 
 ### Command-line flags

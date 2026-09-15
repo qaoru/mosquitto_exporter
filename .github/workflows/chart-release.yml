@@ -1,0 +1,225 @@
+name: Release chart
+
+on:
+  push:
+    branches:
+      - main
+    # Manual / human chart release tags: mosquitto-exporter-<semver>.
+    tags:
+      - 'mosquitto-exporter-*.*.*'
+  # Manual recovery / re-publish of an existing chart tag.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Chart version to publish, e.g. 0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  # On a push to main, detect whether the chart's `version` and/or `appVersion`
+  # in charts/mosquitto-exporter/Chart.yaml changed compared to the previous
+  # commit. A change to either triggers a release. An appVersion change without
+  # a chart version change triggers an automatic patch version bump in the
+  # release job (so image updates cut a release without a manual bump).
+  detect:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+      version: ${{ steps.detect.outputs.version }}
+      version_changed: ${{ steps.detect.outputs.version_changed }}
+      appversion_changed: ${{ steps.detect.outputs.appversion_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect chart change
+        id: detect
+        run: |
+          set -euo pipefail
+          export BEFORE="${{ github.event.before }}"
+          python3 - <<'PY'
+          import os, subprocess
+          before = os.environ['BEFORE']
+          zero = '0' * 40
+          path = 'charts/mosquitto-exporter/Chart.yaml'
+
+          def read_field(text, key):
+              for line in text.splitlines():
+                  if line.startswith(key + ':'):
+                      return line.split(':', 1)[1].strip().strip('"')
+              return None
+
+          cur = open(path).read()
+          new_ver = read_field(cur, 'version')
+          new_app = read_field(cur, 'appVersion')
+          if before and before != zero:
+              r = subprocess.run(['git', 'show', f'{before}:{path}'],
+                                 capture_output=True, text=True)
+              prev = r.stdout if r.returncode == 0 else None
+              prev_ver = read_field(prev, 'version') if prev else None
+              prev_app = read_field(prev, 'appVersion') if prev else None
+              vchg = new_ver != prev_ver
+              appchg = new_app != prev_app
+          else:
+              vchg = appchg = True
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'changed={"true" if (vchg or appchg) else "false"}\n')
+              f.write(f'version={new_ver}\n')
+              f.write(f'version_changed={"true" if vchg else "false"}\n')
+              f.write(f'appversion_changed={"true" if appchg else "false"}\n')
+          print(f'version={new_ver} version_changed={vchg} appversion_changed={appchg}')
+          PY
+
+  release:
+    needs: detect
+    if: |
+      always() &&
+      (
+        (needs.detect.result == 'success' && needs.detect.outputs.changed == 'true') ||
+        startsWith(github.ref, 'refs/tags/mosquitto-exporter-') ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git for bot commits
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v4.3.0
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Install helm-docs
+        env:
+          HELM_DOCS_VERSION: v1.14.2
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/helm-docs.tar.gz \
+            "https://github.com/norwoodj/helm-docs/releases/download/${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION#v}_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/helm-docs.tar.gz -C /tmp helm-docs
+          sudo install -m 0755 /tmp/helm-docs /usr/local/bin/helm-docs
+          helm-docs --version
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Mode 1: push-to-main prep ---------------------------------------
+      # Auto-bump the chart patch version when only appVersion changed, add an
+      # Artifact Hub changelog entry, regenerate README.md with helm-docs,
+      # commit, and push a mosquitto-exporter-<version> tag. Writes the FINAL
+      # (post-bump) version to /tmp/version.txt.
+      - name: Prepare release (push to main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          VERSION_CHANGED: ${{ needs.detect.outputs.version_changed }}
+          APPVERSION_CHANGED: ${{ needs.detect.outputs.appversion_changed }}
+          VERSION: ${{ needs.detect.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          path = 'charts/mosquitto-exporter/Chart.yaml'
+          text = open(path).read()
+          version = os.environ['VERSION']
+          if os.environ['APPVERSION_CHANGED'] == 'true' and os.environ['VERSION_CHANGED'] == 'false':
+              m = re.search(r'^version:\s*(\d+)\.(\d+)\.(\d+)', text, re.M)
+              if not m:
+                  raise SystemExit('could not parse chart version')
+              version = f'{m.group(1)}.{m.group(2)}.{int(m.group(3)) + 1}'
+              text = re.sub(r'^version:.*$', f'version: {version}', text, count=1, flags=re.M)
+              am = re.search(r'^appVersion:\s*"?([^\s"]+)"?', text, re.M)
+              appver = am.group(1)
+              new_changes = (
+                  '  artifacthub.io/changes: |\n'
+                  f'    - kind: changed\n'
+                  f'      description: Update mosquitto_exporter image to {appver}\n'
+              )
+              text = re.sub(
+                  r'  artifacthub\.io/changes:\s*\|\n(?:    .*\n)+',
+                  new_changes, text, count=1)
+              open(path, 'w').write(text)
+              print(f'auto-bumped chart version to {version} for image {appver}')
+          open('/tmp/version.txt', 'w').write(version)
+          PY
+
+          # Regenerate the chart README from README.md.gotmpl + values.yaml.
+          helm-docs charts/mosquitto-exporter/
+
+          git add -A -- 'charts/mosquitto-exporter/Chart.yaml' 'charts/mosquitto-exporter/README.md'
+          VERSION="$(cat /tmp/version.txt)"
+          TAG="mosquitto-exporter-${VERSION}"
+          if ! git diff --quiet --cached; then
+            git commit -m "release(): prepare ${TAG}"
+            git push
+          fi
+          # Create and push the chart release tag if it does not yet exist.
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            git tag "${TAG}"
+            git push origin "${TAG}"
+          fi
+          echo "${VERSION}" > /tmp/version.txt
+
+      # --- Mode 2: manual tag push -----------------------------------------
+      - name: Resolve version from tag
+        if: startsWith(github.ref, 'refs/tags/mosquitto-exporter-')
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#mosquitto-exporter-}"
+          printf '%s' "$VERSION" > /tmp/version.txt
+
+      # --- Mode 3: workflow_dispatch recovery ------------------------------
+      - name: Resolve version from input
+        if: github.event_name == 'workflow_dispatch'
+        run: printf '%s' '${{ inputs.version }}' > /tmp/version.txt
+
+      # --- Publish ---------------------------------------------------------
+      - name: Publish chart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="$(cat /tmp/version.txt)"
+          CHART=charts/mosquitto-exporter
+          TAG="mosquitto-exporter-${VERSION}"
+          OCI_REPO="ghcr.io/qaoru/helm-charts/mosquitto-exporter"
+          echo "::group::Lint + package ${TAG}"
+          helm lint "${CHART}/"
+          helm package "${CHART}/" --destination ./chart-packages
+          echo "::endgroup::"
+          echo "::group::Push OCI ${OCI_REPO}:${VERSION}"
+          helm push "./chart-packages/mosquitto-exporter-${VERSION}.tgz" "oci://ghcr.io/qaoru/helm-charts"
+          cosign sign --yes "${OCI_REPO}:${VERSION}"
+          echo "::endgroup::"
+          echo "::group::GitHub Release ${TAG}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "release ${TAG} already exists, skipping creation"
+          else
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --generate-notes \
+              "./chart-packages/mosquitto-exporter-${VERSION}.tgz"
+          fi
+          echo "::endgroup::"
+          echo "Published ${TAG} -> oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter"

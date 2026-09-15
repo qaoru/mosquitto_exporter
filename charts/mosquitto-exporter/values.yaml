@@ -1,0 +1,287 @@
+# Default values for mosquitto_exporter.
+# See https://github.com/qaoru/mosquitto_exporter for the exporter documentation.
+
+# -- Image configuration.
+image:
+  # -- Container image repository.
+  repository: ghcr.io/qaoru/mosquitto_exporter
+  # -- Container image tag (defaults to the chart `appVersion`).
+  tag: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets for private registries.
+imagePullSecrets: []
+
+# -- Override the chart name used in resource names.
+nameOverride: ""
+# -- Override the fully qualified resource name.
+fullnameOverride: ""
+
+# -- Number of exporter replicas. The exporter is stateless and safe to scale;
+# each pod maintains its own MQTT connection and subscriptions.
+replicaCount: 1
+
+# -- Number of old ReplicaSets to retain for rollback.
+revisionHistoryLimit: 10
+
+# -- Service account configuration.
+serviceAccount:
+  # -- Create a dedicated ServiceAccount for the exporter.
+  create: true
+  # -- ServiceAccount name (defaults to the release fullname).
+  name: ""
+  # -- Annotations added to the ServiceAccount.
+  annotations: {}
+  # -- Automount the ServiceAccount token into the pod. The exporter does not
+  # talk to the Kubernetes API, so this can be disabled.
+  automount: false
+
+# -- Pod security context. The distroless `:nonroot` image runs as UID/GID
+# 65532; these defaults comply with the Pod Security Standards `restricted`
+# profile.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context (PSS `restricted` compatible).
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- MQTT broker connection. The exporter connects over MQTTv3 / MQTTv3.1.1.
+mqtt:
+  # -- Broker URL (`scheme://host:port`). Scheme is `tcp://` (MQTT),
+  # `ssl://` (MQTT over TLS), `ws://` or `wss://`.
+  broker: tcp://mosquitto:1883
+  # -- MQTT client id presented to the broker.
+  clientId: mosquitto-exporter
+  # -- MQTT credentials. Provide either inline `username`/`password` (a Secret
+  # is created for you) or `existingSecret` referencing your own Secret.
+  auth:
+    # -- Existing Secret holding the MQTT credentials. When set, no Secret is
+    # created and `username`/`password` are ignored.
+    existingSecret: ""
+    # -- MQTT username (stored in the chart-managed Secret when no
+    # `existingSecret` is set).
+    username: ""
+    # -- MQTT password (stored in the chart-managed Secret when no
+    # `existingSecret` is set).
+    password: ""
+    # -- Key inside the Secret that holds the username.
+    usernameKey: username
+    # -- Key inside the Secret that holds the password.
+    passwordKey: password
+
+# -- Opt-in metric collectors. All default to `false` to match the exporter.
+collectors:
+  # -- Enable the clients collector (`mosquitto_maximum_clients`, etc.).
+  clients: false
+  # -- Enable the messages collector (message stats + stored messages).
+  messages: false
+  # -- Enable the load collector (1/5/15-min moving averages).
+  load: false
+
+# -- HTTP server configuration.
+web:
+  # -- Listen address passed to `--web.listen-address`.
+  listenAddress: ":9344"
+  # -- Metrics path passed to `--web.telemetry-path`.
+  telemetryPath: /metrics
+
+# -- Extra CLI arguments appended after the generated flags (e.g.
+# `--log.level=debug`). Each entry is a single arg.
+extraArgs: []
+
+# -- Extra environment variables (list of `{name, value}` / `{name, valueFrom}`).
+env: []
+
+# -- Service exposing the metrics endpoint.
+service:
+  # -- Service type.
+  type: ClusterIP
+  # -- Service port.
+  port: 9344
+  # -- Container port the Service targets. Must match the port in
+  # `web.listenAddress`.
+  targetPort: 9344
+  # -- Annotations added to the Service.
+  annotations: {}
+
+# -- Prometheus scrape integration. Both mechanisms are opt-in and can be used
+# together; the ServiceMonitor is preferred when a Prometheus Operator is
+# installed.
+prometheus:
+  # -- Add `prometheus.io/scrape` annotations to the Service for
+  # annotation-based discovery (no Operator required).
+  scrapeAnnotations: false
+
+# -- Prometheus Operator ServiceMonitor. Requires the
+# `monitoring.coreos.com/v1` CRD.
+serviceMonitor:
+  # -- Create a ServiceMonitor resource.
+  enabled: false
+  # -- Labels for Prometheus to select this ServiceMonitor (e.g.
+  # `release: kube-prometheus-stack`).
+  labels: {}
+  # -- Annotations added to the ServiceMonitor.
+  annotations: {}
+  # -- Scrape interval.
+  interval: 30s
+  # -- Scrape timeout.
+  scrapeTimeout: 10s
+  # -- Honor the exporter's own labels.
+  honorLabels: true
+  # -- Metric relabelings applied to scraped samples.
+  metricRelabelings: []
+  # -- Target relabelings applied to the scrape target.
+  relabelings: []
+  # -- Namespace selector for the ServiceMonitor (empty = same namespace).
+  namespaceSelector: {}
+
+# -- Network policy for ingress/egress isolation. Disabled by default; opt in
+# with `enabled: true`. Two mutually-exclusive flavors are supported via
+# `flavor`: `kubernetes` (standard NetworkPolicy) or `cilium`
+# (CiliumNetworkPolicy). Each flavor renders its native rules verbatim from the
+# matching block below, so you can express any policy the underlying CRD
+# supports.
+networkPolicy:
+  # -- Enable network policy creation.
+  enabled: false
+  # -- Policy flavor: `kubernetes` or `cilium`.
+  flavor: kubernetes
+  # -- Standard Kubernetes NetworkPolicy rules (used when `flavor: kubernetes`).
+  # The defaults assume an in-cluster broker on port 1883 and allow the metrics
+  # port from any in-cluster source. Tighten the `ingress` `from` and `egress`
+  # `to` peers to your Prometheus and broker pods.
+  ingress:
+    # Allow the metrics/health port from any source (tighten with `from`).
+    - ports:
+        - protocol: TCP
+          port: 9344
+  egress:
+    # Allow the MQTT broker port to any in-cluster pod. Tighten with a
+    # `to` podSelector/namespaceSelector matching your broker, or an `ipBlock`
+    # for an external broker.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 1883
+    # Allow DNS so the broker service name resolves.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+  # -- CiliumNetworkPolicy rules (used when `flavor: cilium`). The defaults
+  # allow the metrics port from any endpoint and the broker port to any
+  # in-cluster endpoint, plus DNS via the Cilium DNS proxy. Tighten
+  # `toEndpoints` `matchLabels` to match your broker and Prometheus pods.
+  cilium:
+    ingress:
+      - toPorts:
+          - ports:
+              - port: "9344"
+                protocol: TCP
+    egress:
+      # Broker: any in-cluster endpoint on the MQTT port. Tighten with
+      # `matchLabels` (e.g. `k8s:app.kubernetes.io/name: mosquitto`).
+      - toEndpoints: []
+        toPorts:
+          - ports:
+              - port: "1883"
+                protocol: TCP
+      # DNS via the Cilium DNS proxy so service names resolve.
+      - toEndpoints:
+          - matchLabels:
+              k8s:io.kubernetes.pod.namespace: kube-system
+              k8s:k8s-app: kube-dns
+        toPorts:
+          - ports:
+              - port: "53"
+                protocol: UDP
+              - port: "53"
+                protocol: TCP
+            rules:
+              dns:
+                - matchPattern: "*"
+
+# -- Pod disruption budget. Recommended when `replicaCount > 1`.
+podDisruptionBudget:
+  # -- Create a PodDisruptionBudget.
+  enabled: false
+  # -- API version of the PDB resource (`policy/v1` on clusters >= 1.21).
+  apiVersion: policy/v1
+  # -- Minimum available replicas. Mutually exclusive with `maxUnavailable`.
+  minAvailable: 1
+  # -- Maximum unavailable replicas. Mutually exclusive with `minAvailable`.
+  maxUnavailable: ""
+
+# -- Liveness probe. The exporter's `/healthz` returns 200 while the process
+# is running (independent of broker connectivity — see graceful degradation).
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http-metrics
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 1
+  failureThreshold: 3
+
+# -- Readiness probe. `/healthz` reflects process liveness; for broker
+# connectivity scrape `mosquitto_up` instead.
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http-metrics
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 1
+  failureThreshold: 3
+
+# -- Container resource requests and limits.
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi
+
+# -- Additional pod labels.
+podLabels: {}
+# -- Additional pod annotations.
+podAnnotations: {}
+# -- Additional Deployment annotations.
+deploymentAnnotations: {}
+
+# -- Node selector.
+nodeSelector: {}
+# -- Affinity rules.
+affinity: {}
+# -- Tolerations.
+tolerations: []
+# -- Topology spread constraints.
+topologySpreadConstraints: []
+
+# -- Additional volumes for the pod.
+volumes: []
+# -- Additional volume mounts for the container.
+volumeMounts: []
+# -- Additional init containers.
+initContainers: []
