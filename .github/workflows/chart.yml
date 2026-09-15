@@ -20,11 +20,13 @@ on:
     branches: ["main", "develop"]
     paths:
       - "charts/**"
+      - "grafana-dashboard.json"
       - ".github/workflows/chart.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "charts/**"
+      - "grafana-dashboard.json"
       - ".github/workflows/chart.yml"
 
 permissions:
@@ -40,6 +42,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # The chart vendors the dashboard under charts/mosquitto-exporter/dashboard/
+      # mosquitto.json; the repo-root grafana-dashboard.json is the canonical
+      # source. Sync the vendored copy from the root before lint/render so CI
+      # always validates and publishes the canonical dashboard (see also
+      # chart-release.yml, which does the same before `helm package`).
+      - name: Sync vendored dashboard from repo root
+        run: cp grafana-dashboard.json charts/mosquitto-exporter/dashboard/mosquitto.json
 
       - name: Install Helm
         uses: azure/setup-helm@v5

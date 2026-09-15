@@ -37,7 +37,7 @@ Dockerfile.release            # distroless image copying goreleaser-built binari
 .goreleaser.yml               # v2 config: cross-build + dockers_v2 + checksums
 .github/workflows/            # go.yml (CI), release.yml (goreleaser), docker-publish.yml
 .github/dependabot.yml        # gomod + github-actions, weekly
-grafana-dashboard.json            # bundled dashboard (not referenced from README)
+grafana-dashboard.json            # canonical Grafana dashboard (single source of truth; chart copy is CI-regenerated)
 README.md                     # user-facing docs (flags, metrics, examples)
 charts/mosquitto-exporter/    # Helm chart (Chart.yaml, values.yaml + schema, README.md.gotmpl,
                               #   templates: deployment/service/serviceaccount/servicemonitor/
@@ -172,7 +172,12 @@ re-trigger the workflow, so publish runs in the same job as the tag push.
 `appVersion` is owned by THIS repo (the exporter image is released here by
 goreleaser): bump `appVersion` + the `artifacthub.io/images` annotation in
 `Chart.yaml` and merge to main; `chart-release.yml` auto-bumps the chart patch
-version and releases.
+version and releases. After a `v*` tag release, `release.yml`'s
+`chart-appversion-pr` job opens that bump as a PR automatically (merging it
+triggers the chart release); you can still bump manually for control.
+`grafana-dashboard.json` (root) is the canonical dashboard — the chart's
+`dashboard/mosquitto.json` is regenerated from it by `chart.yml` and
+`chart-release.yml`.
 
 Chart conventions (follow the `qaoru/helm-charts` charts `unifi` / `open-terminal`):
 - Chart name uses hyphens (`mosquitto-exporter`) even though the Go module /
@@ -210,7 +215,14 @@ When adding chart templates, add a corresponding render case to
 - Releases are driven by **goreleaser** on tag push (`v*`) via
   `.github/workflows/release.yml`. It cross-builds (linux/darwin/windows,
   amd64/arm64), archives, checksums, and pushes images via `dockers_v2` to
-  ghcr.io and Docker Hub.
+  ghcr.io and Docker Hub. After a successful release, the same workflow's
+  `chart-appversion-pr` job opens a PR bumping the Helm chart's `appVersion`
+  (and the Artifact Hub image annotation) to the released version. Merging that
+  PR is what triggers `chart-release.yml` to auto-bump the chart patch and
+  publish the OCI chart — so the manual "bump `appVersion` and merge" step is
+  now automated via a human-gated PR (the chart quality gate `chart.yml` runs
+  on it). `appVersion` is only bumped after the image is confirmed published,
+  so the chart never references a missing image.
 - `docker-publish.yml` builds dev-branch/PR images (tagged by branch/sha) and
   cosign-signs non-PR images. It deliberately does **not** push `:latest` or
   `:vX.Y.Z` — those are owned by the release workflow to avoid races.
@@ -232,7 +244,10 @@ When adding chart templates, add a corresponding render case to
   load values. Load parsing rejects non-finite values (`NaN`/`Inf`) after
   parsing; keep that guard for any new `ParseFloat`-based handler.
 - Keep metric names unique across collectors and update `README.md`'s metrics
-  tables and `grafana-dashboard.json` when adding/renaming metrics.
+  tables and `grafana-dashboard.json` when adding/renaming metrics. The chart's
+  `charts/mosquitto-exporter/dashboard/mosquitto.json` is a CI-regenerated copy
+  of the canonical root `grafana-dashboard.json` — edit the root file only;
+  `chart.yml` and `chart-release.yml` sync the chart copy before linting/packaging.
 - Tests: add a `NewXCollector`, `Describe`, `Collect`, handler integration,
   `Subscribe`, `Subscribe_Error`, and handler parse-error test for each new
   collector, mirroring the existing ones. Use `testutil.ToFloat64` against

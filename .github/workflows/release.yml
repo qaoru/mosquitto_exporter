@@ -50,3 +50,100 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_NAME: ${{ github.repository }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+  # After a successful exporter release (image + binaries published), open a PR
+  # bumping the Helm chart's `appVersion` (and the Artifact Hub image annotation)
+  # to the just-released version. The chart release is decoupled from the
+  # package release and linked only by `appVersion`; merging this PR is what
+  # triggers `chart-release.yml` to auto-bump the chart patch version and
+  # publish the OCI chart. Opening a PR (instead of pushing to `main` directly)
+  # keeps a human gate and lets the chart quality gate (`chart.yml`) run on the
+  # bump. Runs only on real `v*` release tags, and only if the image release
+  # job succeeded, so `appVersion` never points at an image that failed to
+  # publish.
+  chart-appversion-pr:
+    needs: goreleaser
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git for bot commits
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump chart appVersion and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          BRANCH="bot/chart-appversion-${VERSION}"
+
+          # Branch from latest main so the PR contains only the appVersion bump
+          # (the tag commit may be behind main).
+          git checkout -b "${BRANCH}" origin/main
+
+          python3 - <<'PY'
+          import os, re, sys
+          version = os.environ['VERSION']
+          path = 'charts/mosquitto-exporter/Chart.yaml'
+          text = open(path).read()
+          am = re.search(r'^appVersion:\s*"?([^\s"]+)"?', text, re.M)
+          if not am:
+              raise SystemExit('could not parse appVersion in Chart.yaml')
+          if am.group(1) == version:
+              print(f'appVersion already {version}; no PR needed')
+              open('/tmp/skip', 'w').write('1')
+              sys.exit(0)
+          # Bump appVersion.
+          text = re.sub(r'^appVersion:\s*.*$',
+                        f'appVersion: {version}', text, count=1, flags=re.M)
+          # Update the Artifact Hub image annotation to the new tag.
+          text = re.sub(
+              r'(image:\s*ghcr\.io/qaoru/mosquitto_exporter):[^\s"]+',
+              rf'\g<1>:{version}', text)
+          open(path, 'w').write(text)
+          print(f'bumped appVersion to {version}')
+          PY
+
+          if [ -f /tmp/skip ]; then
+            echo "Nothing to do; exiting."
+            exit 0
+          fi
+
+          git add charts/mosquitto-exporter/Chart.yaml
+          git commit -m "chore(chart): bump appVersion to ${VERSION} for ${TAG}"
+          git push origin "${BRANCH}"
+
+          # Reuse an open PR for the same head if it already exists (e.g. re-tag).
+          if gh pr view "${BRANCH}" --json url >/dev/null 2>&1; then
+            echo "PR already open for ${BRANCH}"
+          else
+            cat > /tmp/pr-body.md <<EOF
+          Automated bump after the \`${TAG}\` exporter release (\`release.yml\`). The image \`ghcr.io/qaoru/mosquitto_exporter:${VERSION}\` is now published.
+
+          Merging this PR triggers \`chart-release.yml\`, which:
+          - auto-bumps the chart **patch** version (so the image update cuts a chart release),
+          - regenerates \`charts/mosquitto-exporter/README.md\` with helm-docs,
+          - syncs the vendored Grafana dashboard from the repo-root \`grafana-dashboard.json\`,
+          - lints, packages, and pushes the cosign-signed OCI chart to \`ghcr.io/qaoru/helm-charts/mosquitto-exporter\`,
+          - creates the \`mosquitto-exporter-<version>\` GitHub Release.
+
+          Review the \`chart.yml\` status checks before merging.
+          EOF
+            gh pr create \
+              --base main \
+              --head "${BRANCH}" \
+              --title "chore(chart): bump appVersion to ${VERSION}" \
+              --body-file /tmp/pr-body.md
+          fi

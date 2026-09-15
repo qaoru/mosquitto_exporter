@@ -93,6 +93,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The repo-root grafana-dashboard.json is the canonical dashboard; the
+      # vendored chart copy is regenerated from it before packaging so the
+      # published OCI chart always ships the canonical dashboard. In
+      # push-to-main mode the synced copy is committed alongside the version
+      # bump (see the "Prepare release" step below).
+      - name: Sync vendored dashboard from repo root
+        run: cp grafana-dashboard.json charts/mosquitto-exporter/dashboard/mosquitto.json
+
       - name: Configure git for bot commits
         run: |
           git config user.name  "github-actions[bot]"
@@ -166,7 +174,7 @@ jobs:
           # Regenerate the chart README from README.md.gotmpl + values.yaml.
           helm-docs charts/mosquitto-exporter/
 
-          git add -A -- 'charts/mosquitto-exporter/Chart.yaml' 'charts/mosquitto-exporter/README.md'
+          git add -A -- 'charts/mosquitto-exporter/Chart.yaml' 'charts/mosquitto-exporter/README.md' 'charts/mosquitto-exporter/dashboard/mosquitto.json'
           VERSION="$(cat /tmp/version.txt)"
           TAG="mosquitto-exporter-${VERSION}"
           if ! git diff --quiet --cached; then
