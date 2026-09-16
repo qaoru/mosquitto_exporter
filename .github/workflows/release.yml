@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual recovery / re-trigger of the appVersion-bump PR (e.g. after a
+  # failed `v*` run, or when the image was released out-of-band). Does NOT
+  # re-run goreleaser — only the `chart-appversion-pr` job runs.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exporter version to bump the chart `appVersion` to (no `v` prefix, e.g. 2.0.0).
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -11,6 +20,8 @@ permissions:
 
 jobs:
   goreleaser:
+    # Only on real `v*` release tags; never on manual recovery dispatches.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -63,7 +74,12 @@ jobs:
   # publish.
   chart-appversion-pr:
     needs: goreleaser
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: |
+      always() &&
+      (
+        (needs.goreleaser.result == 'success' && startsWith(github.ref, 'refs/tags/v')) ||
+        github.event_name == 'workflow_dispatch'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -83,10 +99,18 @@ jobs:
       - name: Bump chart appVersion and open PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          VERSION="${TAG#v}"
+          # On a tag push, derive VERSION/TAG from the git ref. On a manual
+          # `workflow_dispatch` recovery, use the supplied version (the image
+          # is assumed to already be published).
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            export VERSION="${{ inputs.version }}"
+            TAG="v${VERSION}"
+          else
+            export VERSION="${GITHUB_REF_NAME#v}"
+            TAG="${GITHUB_REF_NAME}"
+          fi
           BRANCH="bot/chart-appversion-${VERSION}"
 
           # Branch from latest main so the PR contains only the appVersion bump
