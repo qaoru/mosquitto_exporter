@@ -147,7 +147,12 @@ jobs:
 
           git add charts/mosquitto-exporter/Chart.yaml
           git commit -m "chore(chart): bump appVersion to ${VERSION} for ${TAG}"
-          git push origin "${BRANCH}"
+          # This is an automation-owned, disposable bot branch whose sole
+          # purpose is to carry the appVersion bump. Force-push so every run
+          # (re-tag, re-run, workflow_dispatch recovery) produces a deterministic
+          # branch state from latest `main` instead of diverging from a stale
+          # remote branch left by a previous run.
+          git push --force origin "${BRANCH}"
 
           # Reuse an open PR for the same head if it already exists (e.g. re-tag).
           if gh pr view "${BRANCH}" --json url >/dev/null 2>&1; then
