@@ -4,7 +4,7 @@ type: application
 name: mosquitto-exporter
 description: Prometheus exporter for the Mosquitto MQTT broker. Subscribes to the Mosquitto `$SYS` topic tree and exposes broker statistics as Prometheus metrics.
 version: 0.2.0
-appVersion: 1.0.1
+appVersion: 2.0.0
 home: https://github.com/qaoru/mosquitto_exporter
 sources:
   - https://github.com/qaoru/mosquitto_exporter
@@ -33,4 +33,4 @@ annotations:
       email: paul@qaoru.fr
   artifacthub.io/images: |
     - name: mosquitto_exporter
-      image: ghcr.io/qaoru/mosquitto_exporter:1.0.1
+      image: ghcr.io/qaoru/mosquitto_exporter:2.0.0
