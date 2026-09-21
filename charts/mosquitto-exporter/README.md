@@ -1,6 +1,6 @@
 # mosquitto-exporter
 
-![Version: 0.2.1](https://img.shields.io/badge/Version-0.2.1-informational?style=flat-square)
+![Version: 0.2.2](https://img.shields.io/badge/Version-0.2.2-informational?style=flat-square)
 ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
 ![AppVersion: 2.0.0](https://img.shields.io/badge/AppVersion-2.0.0-informational?style=flat-square)
 
@@ -22,7 +22,7 @@ Deploys the [mosquitto_exporter](https://github.com/qaoru/mosquitto_exporter) co
 
 ```bash
 helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter \
-  --version 0.2.1 \
+  --version 0.2.2 \
   --set mqtt.broker=tcp://mosquitto:1883 \
   --set collectors.clients=true --set collectors.messages=true --set collectors.load=true
 ```
@@ -30,7 +30,7 @@ helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-export
 ### With a values file
 
 ```bash
-helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter --version 0.2.1 -f values.yaml
+helm install mosquitto-exporter oci://ghcr.io/qaoru/helm-charts/mosquitto-exporter --version 0.2.2 -f values.yaml
 ```
 
 ### MQTT credentials
