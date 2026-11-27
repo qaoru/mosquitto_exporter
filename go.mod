@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/alecthomas/kingpin v2.2.6+incompatible
-	github.com/eclipse/paho.mqtt.golang v1.5.0
+	github.com/eclipse/paho.mqtt.golang v1.5.2
 	github.com/prometheus/client_golang v1.25.0
 	github.com/stretchr/testify v1.12.1
 )
